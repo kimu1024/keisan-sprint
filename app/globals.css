@@ -113,25 +113,28 @@ button:disabled { cursor: default; opacity: .42; }
 .stopwatch { min-width: 115px; display: grid; text-align: right; }
 .stopwatch strong { font: 900 23px/1.15 ui-monospace, monospace; letter-spacing: .02em; }
 
-.answer-stream { height: 64px; position: relative; overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 17px; background: color-mix(in srgb, var(--ink) 3%, var(--paper)); box-shadow: inset 0 1px rgba(255,255,255,.2); }
+.answer-stream { height: 64px; position: relative; z-index: 1; overflow: visible; margin-top: 14px; border: 1px solid var(--line); border-radius: 17px; background: color-mix(in srgb, var(--ink) 3%, var(--paper)); box-shadow: inset 0 1px rgba(255,255,255,.2); }
 .answer-stream::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 0 45%, color-mix(in srgb, var(--ink) 4%, transparent) 50%, transparent 55%); background-size: 220% 100%; animation: streamGlow 3.5s linear infinite; }
-.answer-placeholder { height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 18px; color: var(--muted); }
+.answer-placeholder { height: 100%; position: relative; overflow: hidden; display: flex; align-items: center; gap: 12px; padding: 0 18px; border-radius: inherit; color: var(--muted); }
 .answer-placeholder span { font-size: 9px; font-weight: 900; letter-spacing: .18em; }
 .answer-placeholder i { height: 1px; flex: 1; background: var(--line); }
 .answer-placeholder small { font-size: 9px; font-weight: 700; }
-.answer-result { --result-color: #10b981; height: 100%; position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 8px 16px 8px 12px; animation: resultRush .24s cubic-bezier(.2,.8,.2,1); }
+.answer-result { --result-color: #10b981; height: 100%; position: relative; z-index: 1; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 8px 16px 8px 12px; border-radius: inherit; background: color-mix(in srgb, var(--result-color) 4%, var(--paper)); box-shadow: 0 10px 30px color-mix(in srgb, var(--ink) 10%, transparent); animation: resultLift .34s cubic-bezier(.18,.82,.2,1); }
 .answer-result.is-wrong { --result-color: #ff4775; }
 .answer-result::before { content: ""; position: absolute; inset: 7px auto 7px 0; width: 4px; border-radius: 0 99px 99px 0; background: var(--result-color); box-shadow: 0 0 16px var(--result-color); }
 .answer-status { display: flex; align-items: center; gap: 8px; color: var(--result-color); }
 .answer-status > span { writing-mode: vertical-rl; font-size: 7px; font-weight: 900; letter-spacing: .12em; }
 .answer-status > strong { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid color-mix(in srgb, var(--result-color) 38%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--result-color) 12%, transparent); font: 900 20px/1 ui-rounded, sans-serif; }
-.answer-equation { min-width: 0; display: flex; align-items: baseline; gap: 13px; }
-.answer-equation > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 900 19px/1 ui-monospace, monospace; letter-spacing: .02em; }
-.answer-equation > small { color: var(--muted); font-size: 10px; font-weight: 800; }
-.answer-result.is-wrong .answer-equation > small { color: var(--result-color); }
+.answer-equation { min-width: 0; display: flex; align-items: center; gap: 17px; }
+.answer-formula { min-width: 0; display: flex; align-items: baseline; gap: 8px; white-space: nowrap; font-family: ui-monospace, monospace; font-weight: 900; }
+.answer-formula > span { overflow: hidden; text-overflow: ellipsis; font-size: 17px; letter-spacing: .02em; }
+.answer-formula > strong { color: var(--result-color); font-size: 25px; line-height: 1; text-shadow: 0 0 18px color-mix(in srgb, var(--result-color) 28%, transparent); }
+.answer-input { display: flex; align-items: baseline; gap: 6px; color: var(--muted); white-space: nowrap; }
+.answer-input > span { font-size: 8px; font-weight: 900; letter-spacing: .08em; }
+.answer-input > del { color: color-mix(in srgb, var(--muted) 72%, transparent); text-decoration-color: color-mix(in srgb, var(--muted) 88%, transparent); text-decoration-thickness: 2px; font: 800 15px/1 ui-monospace, monospace; }
 .answer-verdict { padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--result-color) 28%, transparent); border-radius: 999px; color: var(--result-color); background: color-mix(in srgb, var(--result-color) 7%, transparent); font-size: 9px; font-weight: 900; }
 
-.problem-stage { min-height: 205px; display: grid; place-content: center; text-align: center; }
+.problem-stage { min-height: 205px; position: relative; z-index: 3; display: grid; place-content: center; text-align: center; animation: questionDrop .18s cubic-bezier(.2,.8,.2,1); }
 .review-kicker { margin: 0 0 8px; color: var(--accent); font-size: 12px; font-weight: 900; }
 .equation { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3.5vw, 28px); }
 .equation span { font: 900 clamp(52px, 10vw, 82px)/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; }
@@ -167,7 +170,8 @@ button:disabled { cursor: default; opacity: .42; }
 .review-time { width: min(100%, 310px); margin: 0 auto; }
 .review-time strong { font: 900 31px/1 ui-monospace, monospace; }
 
-@keyframes resultRush { from { opacity: 0; transform: translateX(32px) skewX(-4deg); } to { opacity: 1; transform: translateX(0) skewX(0); } }
+@keyframes resultLift { 0% { opacity: .08; transform: translateY(150px) scale(1.08); } 58% { opacity: .58; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes questionDrop { from { opacity: .25; transform: translateY(-22px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes streamGlow { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 
 @media (max-width: 760px) {
@@ -196,9 +200,13 @@ button:disabled { cursor: default; opacity: .42; }
   .answer-result { gap: 10px; padding-right: 11px; }
   .answer-status > span { display: none; }
   .answer-status > strong { width: 34px; height: 34px; }
-  .answer-equation { display: grid; gap: 3px; }
-  .answer-equation > span { font-size: 16px; }
-  .answer-equation > small { font-size: 9px; }
+  .answer-equation { gap: 10px; }
+  .answer-formula { gap: 5px; }
+  .answer-formula > span { font-size: 14px; }
+  .answer-formula > strong { font-size: 21px; }
+  .answer-input { gap: 4px; }
+  .answer-input > span { display: none; }
+  .answer-input > del { font-size: 13px; }
   .answer-verdict { font-size: 8px; padding: 6px 8px; }
   .answer-placeholder { padding: 0 13px; }
   .answer-placeholder small { font-size: 8px; }

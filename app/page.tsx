@@ -397,12 +397,16 @@ export default function Home() {
                     <strong>{lastResult.isCorrect ? '✓' : '!'}</strong>
                   </div>
                   <div className="answer-equation">
-                    <span>
-                      {lastResult.problem.left} {lastResult.problem.operator} {lastResult.problem.right} ＝ {lastResult.problem.answer}
-                    </span>
-                    <small>
-                      {lastResult.isCorrect ? '正解、その調子！' : `あなたの答え ${lastResult.givenAnswer}`}
-                    </small>
+                    <div className="answer-formula">
+                      <span>{lastResult.problem.left} {lastResult.problem.operator} {lastResult.problem.right} ＝</span>
+                      <strong>{lastResult.problem.answer}</strong>
+                    </div>
+                    {!lastResult.isCorrect && (
+                      <div className="answer-input">
+                        <span>入力</span>
+                        <del>{lastResult.givenAnswer}</del>
+                      </div>
+                    )}
                   </div>
                   <div className="answer-verdict">{lastResult.isCorrect ? '正解' : '正しい答え'}</div>
                 </div>
@@ -415,7 +419,7 @@ export default function Home() {
               )}
             </div>
 
-            <div className="problem-stage">
+            <div key={`${phase}-${currentProblem.id}`} className="problem-stage">
               {phase === 'review' && (
                 <p className="review-kicker">
                   {reviewKind === 'mistakes' ? 'まちがえた問題を、もういちど！' : 'ゆっくりだった問題を、もういちど！'}
