@@ -113,7 +113,25 @@ button:disabled { cursor: default; opacity: .42; }
 .stopwatch { min-width: 115px; display: grid; text-align: right; }
 .stopwatch strong { font: 900 23px/1.15 ui-monospace, monospace; letter-spacing: .02em; }
 
-.problem-stage { min-height: 245px; display: grid; place-content: center; text-align: center; }
+.answer-stream { height: 64px; position: relative; overflow: hidden; margin-top: 14px; border: 1px solid var(--line); border-radius: 17px; background: color-mix(in srgb, var(--ink) 3%, var(--paper)); box-shadow: inset 0 1px rgba(255,255,255,.2); }
+.answer-stream::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(100deg, transparent 0 45%, color-mix(in srgb, var(--ink) 4%, transparent) 50%, transparent 55%); background-size: 220% 100%; animation: streamGlow 3.5s linear infinite; }
+.answer-placeholder { height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 18px; color: var(--muted); }
+.answer-placeholder span { font-size: 9px; font-weight: 900; letter-spacing: .18em; }
+.answer-placeholder i { height: 1px; flex: 1; background: var(--line); }
+.answer-placeholder small { font-size: 9px; font-weight: 700; }
+.answer-result { --result-color: #10b981; height: 100%; position: relative; display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 16px; padding: 8px 16px 8px 12px; animation: resultRush .24s cubic-bezier(.2,.8,.2,1); }
+.answer-result.is-wrong { --result-color: #ff4775; }
+.answer-result::before { content: ""; position: absolute; inset: 7px auto 7px 0; width: 4px; border-radius: 0 99px 99px 0; background: var(--result-color); box-shadow: 0 0 16px var(--result-color); }
+.answer-status { display: flex; align-items: center; gap: 8px; color: var(--result-color); }
+.answer-status > span { writing-mode: vertical-rl; font-size: 7px; font-weight: 900; letter-spacing: .12em; }
+.answer-status > strong { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid color-mix(in srgb, var(--result-color) 38%, transparent); border-radius: 12px; background: color-mix(in srgb, var(--result-color) 12%, transparent); font: 900 20px/1 ui-rounded, sans-serif; }
+.answer-equation { min-width: 0; display: flex; align-items: baseline; gap: 13px; }
+.answer-equation > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 900 19px/1 ui-monospace, monospace; letter-spacing: .02em; }
+.answer-equation > small { color: var(--muted); font-size: 10px; font-weight: 800; }
+.answer-result.is-wrong .answer-equation > small { color: var(--result-color); }
+.answer-verdict { padding: 7px 10px; border: 1px solid color-mix(in srgb, var(--result-color) 28%, transparent); border-radius: 999px; color: var(--result-color); background: color-mix(in srgb, var(--result-color) 7%, transparent); font-size: 9px; font-weight: 900; }
+
+.problem-stage { min-height: 205px; display: grid; place-content: center; text-align: center; }
 .review-kicker { margin: 0 0 8px; color: var(--accent); font-size: 12px; font-weight: 900; }
 .equation { display: flex; align-items: center; justify-content: center; gap: clamp(12px, 3.5vw, 28px); }
 .equation span { font: 900 clamp(52px, 10vw, 82px)/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; }
@@ -121,10 +139,6 @@ button:disabled { cursor: default; opacity: .42; }
 .equation strong { min-width: 1.35em; padding-bottom: 7px; color: var(--accent); border-bottom: 5px solid var(--accent); font: 900 clamp(52px, 10vw, 82px)/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; }
 .equation strong.empty { color: color-mix(in srgb, var(--muted) 45%, transparent); border-bottom-color: color-mix(in srgb, var(--muted) 28%, transparent); }
 .feedback-message { min-height: 22px; margin: 18px 0 0; color: var(--muted); font-size: 12px; font-weight: 800; }
-.problem-stage.wrong { animation: shake .3s ease; }
-.problem-stage.wrong .feedback-message { color: #ef476f; }
-.problem-stage.wrong .equation strong { color: #10b981; border-bottom-color: #10b981; }
-.problem-stage.correct .feedback-message { color: #10b981; }
 
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; max-width: 460px; margin: 0 auto; }
 .keypad button { height: clamp(54px, 8vh, 66px); border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: color-mix(in srgb, var(--paper) 95%, transparent); box-shadow: 0 4px 10px color-mix(in srgb, var(--ink) 6%, transparent); cursor: pointer; font: 900 25px/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; transition: transform .08s ease, background .1s ease; }
@@ -153,7 +167,8 @@ button:disabled { cursor: default; opacity: .42; }
 .review-time { width: min(100%, 310px); margin: 0 auto; }
 .review-time strong { font: 900 31px/1 ui-monospace, monospace; }
 
-@keyframes shake { 0%, 100% { transform: translateX(0); } 30% { transform: translateX(-8px); } 60% { transform: translateX(7px); } }
+@keyframes resultRush { from { opacity: 0; transform: translateX(32px) skewX(-4deg); } to { opacity: 1; transform: translateX(0) skewX(0); } }
+@keyframes streamGlow { from { background-position: 120% 0; } to { background-position: -120% 0; } }
 
 @media (max-width: 760px) {
   .app-shell { place-items: start center; padding: 0; }
@@ -177,7 +192,17 @@ button:disabled { cursor: default; opacity: .42; }
   .stepper strong { min-width: 61px; font-size: 23px; }
   .primary-button { width: 100%; min-width: 165px; }
   .quiz-content { padding-top: 17px; }
-  .problem-stage { min-height: clamp(190px, 30svh, 250px); }
+  .answer-stream { height: 60px; margin-top: 11px; }
+  .answer-result { gap: 10px; padding-right: 11px; }
+  .answer-status > span { display: none; }
+  .answer-status > strong { width: 34px; height: 34px; }
+  .answer-equation { display: grid; gap: 3px; }
+  .answer-equation > span { font-size: 16px; }
+  .answer-equation > small { font-size: 9px; }
+  .answer-verdict { font-size: 8px; padding: 6px 8px; }
+  .answer-placeholder { padding: 0 13px; }
+  .answer-placeholder small { font-size: 8px; }
+  .problem-stage { min-height: clamp(160px, 23svh, 205px); }
   .keypad { gap: 7px; }
   .keypad button { border-radius: 14px; }
   .result-stats { grid-template-columns: 1fr 1fr; }

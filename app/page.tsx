@@ -16,6 +16,12 @@ type Problem = {
 };
 
 type RecordItem = Problem & { elapsed: number; mistakes: number };
+type LastResult = {
+  sequence: number;
+  problem: Problem;
+  givenAnswer: number;
+  isCorrect: boolean;
+};
 
 const genreOptions: { id: Genre; icon: string; title: string; note: string }[] = [
   { id: 'add-simple', icon: '＋', title: 'たし算', note: 'くり上がりなし' },
@@ -113,10 +119,10 @@ export default function Home() {
   const [mistakes, setMistakes] = useState(0);
   const [elapsed, setElapsed] = useState(0);
   const [totalElapsed, setTotalElapsed] = useState(0);
-  const [feedback, setFeedback] = useState<'idle' | 'wrong' | 'correct'>('idle');
+  const [lastResult, setLastResult] = useState<LastResult | null>(null);
   const sessionStartedAt = useRef(0);
   const questionStartedAt = useRef(0);
-  const feedbackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const resultSequence = useRef(0);
 
   const problemBank = useMemo(
     () => buildProblemBank(selectedGenres, selectedTables),
@@ -139,10 +145,6 @@ export default function Home() {
     const timer = window.setInterval(() => setElapsed(performance.now() - sessionStartedAt.current), 100);
     return () => window.clearInterval(timer);
   }, [phase]);
-
-  useEffect(() => () => {
-    if (feedbackTimer.current) clearTimeout(feedbackTimer.current);
-  }, []);
 
   const chooseTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
@@ -174,7 +176,7 @@ export default function Home() {
     setMistakes(0);
     setAnswer('');
     setElapsed(0);
-    setFeedback('idle');
+    setLastResult(null);
     sessionStartedAt.current = now;
     questionStartedAt.current = now;
     setPhase('quiz');
@@ -197,7 +199,7 @@ export default function Home() {
     setReviewIndex(0);
     setAnswer('');
     setElapsed(0);
-    setFeedback('idle');
+    setLastResult(null);
     sessionStartedAt.current = now;
     questionStartedAt.current = now;
     setPhase('review');
@@ -206,39 +208,43 @@ export default function Home() {
   const resetToSetup = () => {
     setPhase('setup');
     setAnswer('');
-    setFeedback('idle');
+    setLastResult(null);
   };
 
-  const moveForward = useCallback((delay: number, answeredAt: number) => {
-    feedbackTimer.current = setTimeout(() => {
-      if (phase === 'quiz') {
-        if (currentIndex + 1 >= problems.length) {
-          setTotalElapsed(answeredAt - sessionStartedAt.current);
-          setPhase('result');
-        } else {
-          setCurrentIndex((value) => value + 1);
-          questionStartedAt.current = performance.now();
-          setAnswer('');
-          setFeedback('idle');
-        }
-      } else if (phase === 'review') {
-        if (reviewIndex + 1 >= reviewProblems.length) {
-          setTotalElapsed(answeredAt - sessionStartedAt.current);
-          setPhase('complete');
-        } else {
-          setReviewIndex((value) => value + 1);
-          questionStartedAt.current = performance.now();
-          setAnswer('');
-          setFeedback('idle');
-        }
+  const moveForward = useCallback((answeredAt: number) => {
+    if (phase === 'quiz') {
+      if (currentIndex + 1 >= problems.length) {
+        setTotalElapsed(answeredAt - sessionStartedAt.current);
+        setPhase('result');
+      } else {
+        setCurrentIndex((value) => value + 1);
+        questionStartedAt.current = performance.now();
+        setAnswer('');
       }
-    }, delay);
+    } else if (phase === 'review') {
+      if (reviewIndex + 1 >= reviewProblems.length) {
+        setTotalElapsed(answeredAt - sessionStartedAt.current);
+        setPhase('complete');
+      } else {
+        setReviewIndex((value) => value + 1);
+        questionStartedAt.current = performance.now();
+        setAnswer('');
+      }
+    }
   }, [currentIndex, phase, problems.length, reviewIndex, reviewProblems.length]);
 
   const submitAnswer = useCallback(() => {
-    if (!currentProblem || answer === '' || feedback !== 'idle') return;
+    if (!currentProblem || answer === '') return;
     const now = performance.now();
-    const isCorrect = Number(answer) === currentProblem.answer;
+    const givenAnswer = Number(answer);
+    const isCorrect = givenAnswer === currentProblem.answer;
+    resultSequence.current += 1;
+    setLastResult({
+      sequence: resultSequence.current,
+      problem: currentProblem,
+      givenAnswer,
+      isCorrect,
+    });
 
     if (phase === 'quiz') {
       const record = {
@@ -249,25 +255,17 @@ export default function Home() {
       setRecords((current) => [...current, record]);
     }
 
-    if (isCorrect) {
-      setFeedback('correct');
-      moveForward(350, now);
-    } else {
-      if (phase === 'quiz') setMistakes((value) => value + 1);
-      setFeedback('wrong');
-      moveForward(1600, now);
-    }
-  }, [answer, currentProblem, feedback, moveForward, phase]);
+    if (!isCorrect && phase === 'quiz') setMistakes((value) => value + 1);
+    moveForward(now);
+  }, [answer, currentProblem, moveForward, phase]);
 
   const inputDigit = useCallback((digit: string) => {
-    if (feedback !== 'idle') return;
     setAnswer((value) => (value.length >= 3 ? value : `${value}${digit}`));
-  }, [feedback]);
+  }, []);
 
   const eraseDigit = useCallback(() => {
-    if (feedback !== 'idle') return;
     setAnswer((value) => value.slice(0, -1));
-  }, [feedback]);
+  }, []);
 
   useEffect(() => {
     if (phase !== 'quiz' && phase !== 'review') return;
@@ -285,7 +283,6 @@ export default function Home() {
     return records.reduce((sum, item) => sum + item.elapsed, 0) / records.length;
   }, [records]);
 
-  const shownAnswer = feedback === 'wrong' && currentProblem ? String(currentProblem.answer) : answer;
   const multiplicationNeedsTable = selectedGenres.includes('multiply') && selectedTables.length === 0;
 
   return (
@@ -389,7 +386,36 @@ export default function Home() {
               <div className="stopwatch"><span>TIME</span><strong>{formatTime(elapsed)}</strong></div>
             </div>
 
-            <div className={`problem-stage ${feedback}`} aria-live="polite">
+            <div className="answer-stream" aria-live="polite" aria-atomic="true">
+              {lastResult ? (
+                <div
+                  key={lastResult.sequence}
+                  className={`answer-result ${lastResult.isCorrect ? 'is-correct' : 'is-wrong'}`}
+                >
+                  <div className="answer-status">
+                    <span>{lastResult.isCorrect ? 'NICE' : 'CHECK'}</span>
+                    <strong>{lastResult.isCorrect ? '✓' : '!'}</strong>
+                  </div>
+                  <div className="answer-equation">
+                    <span>
+                      {lastResult.problem.left} {lastResult.problem.operator} {lastResult.problem.right} ＝ {lastResult.problem.answer}
+                    </span>
+                    <small>
+                      {lastResult.isCorrect ? '正解、その調子！' : `あなたの答え ${lastResult.givenAnswer}`}
+                    </small>
+                  </div>
+                  <div className="answer-verdict">{lastResult.isCorrect ? '正解' : '正しい答え'}</div>
+                </div>
+              ) : (
+                <div className="answer-placeholder">
+                  <span>LAST ANSWER</span>
+                  <i />
+                  <small>回答結果がここに流れます</small>
+                </div>
+              )}
+            </div>
+
+            <div className="problem-stage">
               {phase === 'review' && (
                 <p className="review-kicker">
                   {reviewKind === 'mistakes' ? 'まちがえた問題を、もういちど！' : 'ゆっくりだった問題を、もういちど！'}
@@ -400,24 +426,18 @@ export default function Home() {
                 <i>{currentProblem.operator}</i>
                 <span>{currentProblem.right}</span>
                 <i>＝</i>
-                <strong className={shownAnswer ? '' : 'empty'}>{shownAnswer || '?'}</strong>
+                <strong className={answer ? '' : 'empty'}>{answer || '?'}</strong>
               </div>
-              <p className="feedback-message">
-                {feedback === 'wrong'
-                  ? `せいかいは ${currentProblem.answer}。つぎの問題へ！`
-                  : feedback === 'correct'
-                    ? 'せいかい！'
-                    : 'こたえを おしてね'}
-              </p>
+              <p className="feedback-message">こたえを おしてね</p>
             </div>
 
             <div className="keypad" aria-label="数字入力">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-                <button key={digit} onClick={() => inputDigit(String(digit))} disabled={feedback !== 'idle'}>{digit}</button>
+                <button key={digit} onClick={() => inputDigit(String(digit))}>{digit}</button>
               ))}
-              <button className="key-action" onClick={eraseDigit} disabled={feedback !== 'idle'} aria-label="一文字消す">⌫</button>
-              <button onClick={() => inputDigit('0')} disabled={feedback !== 'idle'}>0</button>
-              <button className="key-submit" onClick={submitAnswer} disabled={feedback !== 'idle'} aria-label="答えを決定">決定</button>
+              <button className="key-action" onClick={eraseDigit} aria-label="一文字消す">⌫</button>
+              <button onClick={() => inputDigit('0')}>0</button>
+              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定">決定</button>
             </div>
           </div>
         )}
