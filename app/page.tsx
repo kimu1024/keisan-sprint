@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
-type Theme = 'cute' | 'cool';
+type Theme = 'coral' | 'apricot' | 'lemon' | 'mint' | 'aqua' | 'sky' | 'lavender' | 'rose';
 type Genre = 'add-simple' | 'add-carry' | 'sub-simple' | 'sub-borrow' | 'multiply';
 type Phase = 'setup' | 'quiz' | 'result' | 'review' | 'complete';
 type ReviewKind = 'mistakes' | 'slow';
@@ -29,6 +29,17 @@ const genreOptions: { id: Genre; icon: string; title: string; note: string }[] =
   { id: 'sub-simple', icon: '−', title: 'ひき算', note: 'くり下がりなし' },
   { id: 'sub-borrow', icon: '−', title: 'ひき算', note: 'くり下がりあり' },
   { id: 'multiply', icon: '×', title: '九九', note: '1〜9の段' },
+];
+
+const paletteOptions: { id: Theme; label: string; swatch: string }[] = [
+  { id: 'coral', label: 'コーラルレッド', swatch: '#ef7d86' },
+  { id: 'apricot', label: 'アプリコット', swatch: '#eea562' },
+  { id: 'lemon', label: 'レモンイエロー', swatch: '#dfbd55' },
+  { id: 'mint', label: 'ミントグリーン', swatch: '#62bb91' },
+  { id: 'aqua', label: 'アクア', swatch: '#55b9b6' },
+  { id: 'sky', label: 'スカイブルー', swatch: '#659fd3' },
+  { id: 'lavender', label: 'ラベンダー', swatch: '#9887d3' },
+  { id: 'rose', label: 'ローズピンク', swatch: '#db83ad' },
 ];
 
 function makeProblem(id: string, left: number, right: number, operator: Problem['operator'], answer: number): Problem {
@@ -104,7 +115,7 @@ function formatTime(ms: number) {
 }
 
 export default function Home() {
-  const [theme, setTheme] = useState<Theme>('cute');
+  const [theme, setTheme] = useState<Theme>('coral');
   const [phase, setPhase] = useState<Phase>('setup');
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>(['add-simple', 'add-carry']);
   const [selectedTables, setSelectedTables] = useState<number[]>([2]);
@@ -132,8 +143,13 @@ export default function Home() {
   const selectedCount = maxProblemCount ? Math.min(problemCount, maxProblemCount) : 0;
 
   useEffect(() => {
-    const savedTheme = window.localStorage.getItem('keisan-theme');
-    if (savedTheme === 'cute' || savedTheme === 'cool') setTheme(savedTheme);
+    const savedTheme = window.localStorage.getItem('keisan-palette');
+    if (paletteOptions.some((option) => option.id === savedTheme)) {
+      setTheme(savedTheme as Theme);
+      return;
+    }
+    const oldTheme = window.localStorage.getItem('keisan-theme');
+    if (oldTheme === 'cool') setTheme('sky');
   }, []);
 
   useEffect(() => {
@@ -148,7 +164,7 @@ export default function Home() {
 
   const chooseTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
-    window.localStorage.setItem('keisan-theme', nextTheme);
+    window.localStorage.setItem('keisan-palette', nextTheme);
   };
 
   const toggleGenre = (genre: Genre) => {
@@ -502,9 +518,21 @@ function AppHeader({ theme, chooseTheme, compact }: { theme: Theme; chooseTheme:
           <h1>けいさんスプリント</h1>
         </div>
       </div>
-      <div className="theme-switch" aria-label="テーマを選ぶ">
-        <button className={theme === 'cute' ? 'active' : ''} onClick={() => chooseTheme('cute')} aria-pressed={theme === 'cute'}>かわいい</button>
-        <button className={theme === 'cool' ? 'active' : ''} onClick={() => chooseTheme('cool')} aria-pressed={theme === 'cool'}>クール</button>
+      <div className="palette-picker" aria-label="カラーパターンを選ぶ">
+        <span className="palette-label">COLOR</span>
+        <div className="palette-swatches">
+          {paletteOptions.map((option) => (
+            <button
+              key={option.id}
+              className={theme === option.id ? 'active' : ''}
+              style={{ backgroundColor: option.swatch }}
+              onClick={() => chooseTheme(option.id)}
+              aria-label={`${option.label}に変更`}
+              aria-pressed={theme === option.id}
+              title={option.label}
+            />
+          ))}
+        </div>
       </div>
     </header>
   );
