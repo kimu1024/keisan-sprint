@@ -114,8 +114,114 @@ function formatTime(ms: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
 }
 
+function formatSeconds(ms: number) {
+  return `${(ms / 1000).toFixed(1)}秒`;
+}
+
+function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Theme }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !records.length) return;
+
+    const draw = () => {
+      const width = canvas.clientWidth;
+      const height = canvas.clientHeight;
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(width * ratio);
+      canvas.height = Math.round(height * ratio);
+      const context = canvas.getContext('2d');
+      if (!context) return;
+      context.scale(ratio, ratio);
+
+      const styles = getComputedStyle(canvas);
+      const accent = styles.getPropertyValue('--accent').trim() || '#659fd3';
+      const ink = styles.getPropertyValue('--ink').trim() || '#183153';
+      const muted = styles.getPropertyValue('--muted').trim() || '#738097';
+      const padding = { top: 20, right: 18, bottom: 34, left: 48 };
+      const chartWidth = width - padding.left - padding.right;
+      const chartHeight = height - padding.top - padding.bottom;
+      const maximum = Math.max(...records.map((record) => record.elapsed), 1000);
+      const ceiling = Math.ceil(maximum / 1000) * 1000;
+      const x = (index: number) => padding.left + (records.length === 1 ? chartWidth / 2 : (index / (records.length - 1)) * chartWidth);
+      const y = (value: number) => padding.top + chartHeight - (value / ceiling) * chartHeight;
+
+      context.clearRect(0, 0, width, height);
+      context.font = '700 10px system-ui, sans-serif';
+      context.textAlign = 'right';
+      context.textBaseline = 'middle';
+      for (let line = 0; line <= 4; line += 1) {
+        const value = (ceiling / 4) * line;
+        const lineY = y(value);
+        context.strokeStyle = `${ink}14`;
+        context.lineWidth = 1;
+        context.beginPath();
+        context.moveTo(padding.left, lineY);
+        context.lineTo(width - padding.right, lineY);
+        context.stroke();
+        context.fillStyle = muted;
+        context.fillText(`${(value / 1000).toFixed(value < 1000 ? 1 : 0)}s`, padding.left - 9, lineY);
+      }
+
+      const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + chartHeight);
+      gradient.addColorStop(0, `${accent}55`);
+      gradient.addColorStop(1, `${accent}06`);
+      context.beginPath();
+      records.forEach((record, index) => {
+        if (index === 0) context.moveTo(x(index), y(record.elapsed));
+        else context.lineTo(x(index), y(record.elapsed));
+      });
+      context.lineTo(x(records.length - 1), padding.top + chartHeight);
+      context.lineTo(x(0), padding.top + chartHeight);
+      context.closePath();
+      context.fillStyle = gradient;
+      context.fill();
+
+      context.beginPath();
+      records.forEach((record, index) => {
+        if (index === 0) context.moveTo(x(index), y(record.elapsed));
+        else context.lineTo(x(index), y(record.elapsed));
+      });
+      context.strokeStyle = accent;
+      context.lineWidth = 3;
+      context.lineJoin = 'round';
+      context.lineCap = 'round';
+      context.stroke();
+
+      const slowest = Math.max(...records.map((record) => record.elapsed));
+      records.forEach((record, index) => {
+        context.beginPath();
+        context.arc(x(index), y(record.elapsed), record.elapsed === slowest ? 5 : 3, 0, Math.PI * 2);
+        context.fillStyle = record.elapsed === slowest ? '#ff4775' : accent;
+        context.fill();
+        context.strokeStyle = '#ffffff';
+        context.lineWidth = 2;
+        context.stroke();
+      });
+
+      context.fillStyle = muted;
+      context.textAlign = 'center';
+      context.textBaseline = 'top';
+      const tickCount = Math.min(5, records.length);
+      for (let tick = 0; tick < tickCount; tick += 1) {
+        const index = tickCount === 1 ? 0 : Math.round((tick / (tickCount - 1)) * (records.length - 1));
+        context.fillText(`${index + 1}問`, x(index), height - 22);
+      }
+    };
+
+    draw();
+    const observer = new ResizeObserver(draw);
+    observer.observe(canvas);
+    return () => observer.disconnect();
+  }, [records, theme]);
+
+  return <canvas ref={canvasRef} className="performance-chart" aria-label="問題ごとの回答時間グラフ" />;
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<Theme>('coral');
+  const [soundEnabled, setSoundEnabled] = useState(true);
   const [phase, setPhase] = useState<Phase>('setup');
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>(['add-simple', 'add-carry']);
   const [selectedTables, setSelectedTables] = useState<number[]>([2]);
@@ -134,6 +240,7 @@ export default function Home() {
   const sessionStartedAt = useRef(0);
   const questionStartedAt = useRef(0);
   const resultSequence = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   const problemBank = useMemo(
     () => buildProblemBank(selectedGenres, selectedTables),
@@ -153,6 +260,10 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    setSoundEnabled(window.localStorage.getItem('keisan-sound') !== 'off');
+  }, []);
+
+  useEffect(() => {
     if (maxProblemCount > 0) setProblemCount((value) => Math.min(Math.max(value, 1), maxProblemCount));
   }, [maxProblemCount]);
 
@@ -166,6 +277,41 @@ export default function Home() {
     setTheme(nextTheme);
     window.localStorage.setItem('keisan-palette', nextTheme);
   };
+
+  const toggleSound = () => {
+    setSoundEnabled((current) => {
+      const next = !current;
+      window.localStorage.setItem('keisan-sound', next ? 'on' : 'off');
+      return next;
+    });
+  };
+
+  const playAnswerSound = useCallback((isCorrect: boolean) => {
+    if (!soundEnabled) return;
+    const AudioContextClass = window.AudioContext
+      ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextClass) return;
+    const audioContext = audioContextRef.current ?? new AudioContextClass();
+    audioContextRef.current = audioContext;
+    if (audioContext.state === 'suspended') void audioContext.resume();
+
+    const start = audioContext.currentTime;
+    const notes = isCorrect
+      ? [{ frequency: 660, at: 0 }, { frequency: 880, at: 0.075 }]
+      : [{ frequency: 260, at: 0 }, { frequency: 190, at: 0.09 }];
+    notes.forEach(({ frequency, at }) => {
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = isCorrect ? 'sine' : 'triangle';
+      oscillator.frequency.setValueAtTime(frequency, start + at);
+      gain.gain.setValueAtTime(0.0001, start + at);
+      gain.gain.exponentialRampToValueAtTime(isCorrect ? 0.12 : 0.09, start + at + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + at + 0.12);
+      oscillator.connect(gain).connect(audioContext.destination);
+      oscillator.start(start + at);
+      oscillator.stop(start + at + 0.13);
+    });
+  }, [soundEnabled]);
 
   const toggleGenre = (genre: Genre) => {
     setSelectedGenres((current) =>
@@ -254,6 +400,7 @@ export default function Home() {
     const now = performance.now();
     const givenAnswer = Number(answer);
     const isCorrect = givenAnswer === currentProblem.answer;
+    playAnswerSound(isCorrect);
     resultSequence.current += 1;
     setLastResult({
       sequence: resultSequence.current,
@@ -273,7 +420,7 @@ export default function Home() {
 
     if (!isCorrect && phase === 'quiz') setMistakes((value) => value + 1);
     moveForward(now);
-  }, [answer, currentProblem, moveForward, phase]);
+  }, [answer, currentProblem, moveForward, phase, playAnswerSound]);
 
   const inputDigit = useCallback((digit: string) => {
     setAnswer((value) => (value.length >= 3 ? value : `${value}${digit}`));
@@ -297,6 +444,20 @@ export default function Home() {
   const averageTime = useMemo(() => {
     if (!records.length) return 0;
     return records.reduce((sum, item) => sum + item.elapsed, 0) / records.length;
+  }, [records]);
+
+  const analysis = useMemo(() => {
+    const elapsedTimes = records.map((record) => record.elapsed).sort((a, b) => a - b);
+    const middle = Math.floor(elapsedTimes.length / 2);
+    const median = elapsedTimes.length % 2
+      ? elapsedTimes[middle]
+      : ((elapsedTimes[middle - 1] ?? 0) + (elapsedTimes[middle] ?? 0)) / 2;
+    return {
+      fastest: elapsedTimes[0] ?? 0,
+      median,
+      slowest: elapsedTimes.at(-1) ?? 0,
+      slowestRecords: [...records].sort((a, b) => b.elapsed - a.elapsed).slice(0, 10),
+    };
   }, [records]);
 
   const multiplicationNeedsTable = selectedGenres.includes('multiply') && selectedTables.length === 0;
@@ -399,7 +560,18 @@ export default function Home() {
                 </div>
                 <div className="progress-track"><i style={{ width: `${(progressCurrent / progressTotal) * 100}%` }} /></div>
               </div>
-              <div className="stopwatch"><span>TIME</span><strong>{formatTime(elapsed)}</strong></div>
+              <div className="quiz-tools">
+                <button
+                  className={`sound-toggle ${soundEnabled ? 'is-on' : ''}`}
+                  onClick={toggleSound}
+                  aria-label={soundEnabled ? '効果音をオフにする' : '効果音をオンにする'}
+                  aria-pressed={soundEnabled}
+                  title={soundEnabled ? '効果音 ON' : '効果音 OFF'}
+                >
+                  <span aria-hidden="true">{soundEnabled ? '♪' : '×'}</span>
+                </button>
+                <div className="stopwatch"><span>TIME</span><strong>{formatTime(elapsed)}</strong></div>
+              </div>
             </div>
 
             <div className="answer-stream" aria-live="polite" aria-atomic="true">
@@ -477,6 +649,45 @@ export default function Home() {
               <div><span>1問へいきん</span><strong>{(averageTime / 1000).toFixed(1)}<small>秒</small></strong></div>
               <div><span>まちがい</span><strong>{mistakes}<small>問</small></strong></div>
             </div>
+            <section className="analysis-section">
+              <div className="analysis-heading">
+                <div>
+                  <p>PACE ANALYSIS</p>
+                  <h3>スピードを見てみよう</h3>
+                </div>
+                <span className="analysis-chip">全 {records.length} 問</span>
+              </div>
+              <div className="chart-card">
+                <div className="chart-title">
+                  <span>1問ごとのタイム</span>
+                  <small><i /> 赤い点は一番時間がかかった問題</small>
+                </div>
+                <PerformanceChart records={records} theme={theme} />
+              </div>
+              <div className="pace-summary">
+                <div><span>FASTEST</span><strong>{formatSeconds(analysis.fastest)}</strong><small>最速</small></div>
+                <div className="pace-focus"><span>MEDIAN</span><strong>{formatSeconds(analysis.median)}</strong><small>まんなか</small></div>
+                <div><span>SLOWEST</span><strong>{formatSeconds(analysis.slowest)}</strong><small>最長</small></div>
+              </div>
+              <div className="slow-ranking">
+                <div className="ranking-heading">
+                  <div><span>SPEED QUEST</span><h3>じっくり考えた問題</h3></div>
+                  <small>長かった順 TOP {analysis.slowestRecords.length}</small>
+                </div>
+                <div className="ranking-list">
+                  {analysis.slowestRecords.map((record, index) => (
+                    <div className="ranking-row" key={record.id}>
+                      <span className={`rank-number rank-${index + 1}`}>{index + 1}</span>
+                      <strong className="rank-problem">{record.left} {record.operator} {record.right}</strong>
+                      <span className={`rank-result ${record.mistakes ? 'needs-review' : ''}`}>
+                        {record.mistakes ? '要復習' : '正解'}
+                      </span>
+                      <strong className="rank-time">{formatSeconds(record.elapsed)}</strong>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </section>
             <div className="result-actions">
               {incorrectRecords.length > 0 && (
                 <button className="primary-button result-button" onClick={() => startReview('mistakes')}>
