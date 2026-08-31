@@ -42,6 +42,8 @@ const paletteOptions: { id: Theme; label: string; swatch: string }[] = [
   { id: 'rose', label: 'ローズピンク', swatch: '#db83ad' },
 ];
 
+const multiplicationTables = Array.from({ length: 9 }, (_, index) => index + 1);
+
 function makeProblem(id: string, left: number, right: number, operator: Problem['operator'], answer: number): Problem {
   return { id, left, right, operator, answer };
 }
@@ -225,7 +227,7 @@ export default function Home() {
   const [phase, setPhase] = useState<Phase>('setup');
   const [countdown, setCountdown] = useState(3);
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>(['add-simple', 'add-carry']);
-  const [selectedTables, setSelectedTables] = useState<number[]>([2]);
+  const [selectedTables, setSelectedTables] = useState<number[]>(multiplicationTables);
   const [problemCount, setProblemCount] = useState(50);
   const [problems, setProblems] = useState<Problem[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -520,19 +522,26 @@ export default function Home() {
               <div className="table-picker">
                 <div className="setting-heading">
                   <span className="setting-label">何の段にする？</span>
-                  <small>複数えらべます</small>
+                  <div className="table-bulk-actions">
+                    <button onClick={() => setSelectedTables(multiplicationTables)}>すべてチェック</button>
+                    <button onClick={() => setSelectedTables([])}>すべて外す</button>
+                  </div>
                 </div>
                 <div className="table-buttons">
-                  {Array.from({ length: 9 }, (_, index) => index + 1).map((value) => (
+                  {multiplicationTables.map((value) => {
+                    const isSelected = selectedTables.includes(value);
+                    return (
                     <button
                       key={value}
-                      className={selectedTables.includes(value) ? 'active' : ''}
+                      className={isSelected ? 'active' : ''}
                       onClick={() => toggleTable(value)}
-                      aria-pressed={selectedTables.includes(value)}
+                      aria-pressed={isSelected}
                     >
-                      {value}<small>の段</small>
+                      <span className="table-check" aria-hidden="true">{isSelected ? '✓' : ''}</span>
+                      <strong>{value}</strong><small>の段</small>
                     </button>
-                  ))}
+                    );
+                  })}
                 </div>
                 {multiplicationNeedsTable && <p className="selection-warning">九九の段を1つ以上えらんでね</p>}
               </div>
@@ -731,9 +740,11 @@ export default function Home() {
               <button className={incorrectRecords.length ? 'secondary-button' : 'primary-button result-button'} onClick={() => startReview('slow')}>
                 <span>おそかった{Math.min(10, records.length)}問を復習</span><b>→</b>
               </button>
-              <button className="secondary-button combined-review-button" onClick={() => startReview('combined')}>
-                <span>まとめて復習</span><b>↗</b>
-              </button>
+              {incorrectRecords.length > 0 && (
+                <button className="secondary-button combined-review-button" onClick={() => startReview('combined')}>
+                  <span>まとめて復習</span><b>↗</b>
+                </button>
+              )}
             </div>
             <button className="text-button" onClick={resetToSetup}>れんしゅう選択にもどる</button>
           </div>
