@@ -4,8 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 type Theme = 'coral' | 'apricot' | 'lemon' | 'mint' | 'aqua' | 'sky' | 'lavender' | 'rose';
 type Genre = 'add-simple' | 'add-carry' | 'sub-simple' | 'sub-borrow' | 'multiply';
-type Phase = 'setup' | 'quiz' | 'result' | 'review' | 'complete';
-type ReviewKind = 'mistakes' | 'slow';
+type Phase = 'setup' | 'countdown' | 'quiz' | 'result' | 'review' | 'complete';
+type ReviewKind = 'mistakes' | 'slow' | 'combined';
 
 type Problem = {
   id: string;
@@ -107,15 +107,15 @@ function stripRecord({ elapsed: _elapsed, mistakes: _mistakes, ...problem }: Rec
 }
 
 function formatTime(ms: number) {
-  const totalTenths = Math.floor(ms / 100);
-  const minutes = Math.floor(totalTenths / 600);
-  const seconds = Math.floor((totalTenths % 600) / 10);
-  const tenths = totalTenths % 10;
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${tenths}`;
+  const totalHundredths = Math.floor(ms / 10);
+  const minutes = Math.floor(totalHundredths / 6000);
+  const seconds = Math.floor((totalHundredths % 6000) / 100);
+  const hundredths = totalHundredths % 100;
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(hundredths).padStart(2, '0')}`;
 }
 
 function formatSeconds(ms: number) {
-  return `${(ms / 1000).toFixed(1)}秒`;
+  return `${(ms / 1000).toFixed(2)}秒`;
 }
 
 function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Theme }) {
@@ -223,6 +223,7 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>('coral');
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [phase, setPhase] = useState<Phase>('setup');
+  const [countdown, setCountdown] = useState(3);
   const [selectedGenres, setSelectedGenres] = useState<Genre[]>(['add-simple', 'add-carry']);
   const [selectedTables, setSelectedTables] = useState<number[]>([2]);
   const [problemCount, setProblemCount] = useState(50);
@@ -269,9 +270,25 @@ export default function Home() {
 
   useEffect(() => {
     if (phase !== 'quiz' && phase !== 'review') return;
-    const timer = window.setInterval(() => setElapsed(performance.now() - sessionStartedAt.current), 100);
+    const timer = window.setInterval(() => setElapsed(performance.now() - sessionStartedAt.current), 50);
     return () => window.clearInterval(timer);
   }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'countdown') return;
+    const timer = window.setTimeout(() => {
+      if (countdown > 1) {
+        setCountdown((value) => value - 1);
+        return;
+      }
+      const now = performance.now();
+      sessionStartedAt.current = now;
+      questionStartedAt.current = now;
+      setElapsed(0);
+      setPhase('quiz');
+    }, 1000);
+    return () => window.clearTimeout(timer);
+  }, [countdown, phase]);
 
   const chooseTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
@@ -331,7 +348,6 @@ export default function Home() {
 
   const beginQuiz = () => {
     if (!selectedCount) return;
-    const now = performance.now();
     setProblems(shuffle(problemBank).slice(0, selectedCount));
     setRecords([]);
     setCurrentIndex(0);
@@ -339,20 +355,22 @@ export default function Home() {
     setAnswer('');
     setElapsed(0);
     setLastResult(null);
-    sessionStartedAt.current = now;
-    questionStartedAt.current = now;
-    setPhase('quiz');
+    setCountdown(3);
+    setPhase('countdown');
   };
 
   const incorrectRecords = useMemo(() => records.filter((item) => item.mistakes > 0), [records]);
 
   const startReview = (kind: ReviewKind) => {
-    const selected = kind === 'mistakes'
-      ? incorrectRecords.map(stripRecord)
-      : [...records]
-        .sort((a, b) => b.elapsed - a.elapsed)
-        .slice(0, Math.min(10, records.length))
-        .map(stripRecord);
+    const slowRecords = [...records]
+      .sort((a, b) => b.elapsed - a.elapsed)
+      .slice(0, Math.min(10, records.length));
+    const source = kind === 'mistakes'
+      ? incorrectRecords
+      : kind === 'slow'
+        ? slowRecords
+        : [...new Map([...incorrectRecords, ...slowRecords].map((record) => [record.id, record])).values()];
+    const selected = source.map(stripRecord);
     if (!selected.length) return;
 
     const now = performance.now();
@@ -550,6 +568,18 @@ export default function Home() {
           </div>
         )}
 
+        {phase === 'countdown' && (
+          <div className="countdown-content" aria-live="assertive" aria-label={`スタートまで${countdown}秒`}>
+            <p>GET READY</p>
+            <div key={countdown} className="countdown-number">
+              <span>{countdown}</span>
+              <i aria-hidden="true" />
+            </div>
+            <h2>もうすぐ スタート！</h2>
+            <small>しせいをととのえて、テンキーに指をおこう</small>
+          </div>
+        )}
+
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
             <div className="quiz-status">
@@ -610,7 +640,11 @@ export default function Home() {
             <div key={`${phase}-${currentProblem.id}`} className="problem-stage">
               {phase === 'review' && (
                 <p className="review-kicker">
-                  {reviewKind === 'mistakes' ? 'まちがえた問題を、もういちど！' : 'ゆっくりだった問題を、もういちど！'}
+                  {reviewKind === 'mistakes'
+                    ? 'まちがえた問題を、もういちど！'
+                    : reviewKind === 'slow'
+                      ? 'ゆっくりだった問題を、もういちど！'
+                      : '気になる問題を、まとめてチャレンジ！'}
                 </p>
               )}
               <div className="equation">
@@ -646,7 +680,7 @@ export default function Home() {
             </p>
             <div className="result-stats">
               <div><span>タイム</span><strong>{formatTime(totalElapsed)}</strong></div>
-              <div><span>1問へいきん</span><strong>{(averageTime / 1000).toFixed(1)}<small>秒</small></strong></div>
+              <div><span>1問へいきん</span><strong>{(averageTime / 1000).toFixed(2)}<small>秒</small></strong></div>
               <div><span>まちがい</span><strong>{mistakes}<small>問</small></strong></div>
             </div>
             <section className="analysis-section">
@@ -697,6 +731,9 @@ export default function Home() {
               <button className={incorrectRecords.length ? 'secondary-button' : 'primary-button result-button'} onClick={() => startReview('slow')}>
                 <span>おそかった{Math.min(10, records.length)}問を復習</span><b>→</b>
               </button>
+              <button className="secondary-button combined-review-button" onClick={() => startReview('combined')}>
+                <span>まとめて復習</span><b>↗</b>
+              </button>
             </div>
             <button className="text-button" onClick={resetToSetup}>れんしゅう選択にもどる</button>
           </div>
@@ -706,7 +743,7 @@ export default function Home() {
           <div className="result-content complete-content">
             <span className="result-symbol">✓</span>
             <p className="result-kicker">REVIEW COMPLETE</p>
-            <h2>{reviewKind === 'mistakes' ? 'まちがい復習 おわり！' : 'スピード復習 おわり！'}</h2>
+            <h2>{reviewKind === 'mistakes' ? 'まちがい復習 おわり！' : reviewKind === 'slow' ? 'スピード復習 おわり！' : 'まとめて復習 おわり！'}</h2>
             <p className="result-copy">くり返すほど、計算はどんどん得意になるよ。今日のチャレンジ、おつかれさま！</p>
             <div className="review-time"><span>ふくしゅうタイム</span><strong>{formatTime(totalElapsed)}</strong></div>
             <button className="primary-button result-button" onClick={resetToSetup}>

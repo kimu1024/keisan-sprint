@@ -102,6 +102,15 @@ h1 { margin: 0; font-size: clamp(19px, 3.4vw, 27px); letter-spacing: .03em; }
 .primary-button b { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 10px; background: rgba(255,255,255,.22); font-size: 19px; }
 button:disabled { cursor: default; opacity: .42; }
 
+.countdown-content { min-height: min(620px, calc(100svh - 150px)); display: grid; place-content: center; justify-items: center; padding: 34px 0; text-align: center; }
+.countdown-content > p { margin: 0 0 17px; color: var(--accent); font-size: 10px; font-weight: 900; letter-spacing: .24em; }
+.countdown-number { width: clamp(150px, 28vw, 210px); aspect-ratio: 1; position: relative; display: grid; place-items: center; border-radius: 999px; background: color-mix(in srgb, var(--accent) 8%, var(--paper)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 17%, transparent), 0 20px 60px color-mix(in srgb, var(--accent) 18%, transparent); animation: countdownPop .72s cubic-bezier(.17,.84,.25,1); }
+.countdown-number::before { content: ""; position: absolute; inset: 13px; border: 2px solid color-mix(in srgb, var(--accent) 28%, transparent); border-radius: inherit; }
+.countdown-number span { position: relative; z-index: 2; color: var(--accent); font: 900 clamp(78px, 17vw, 120px)/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; text-shadow: 0 12px 35px color-mix(in srgb, var(--accent) 22%, transparent); }
+.countdown-number i { position: absolute; inset: -7px; border-radius: inherit; border: 7px solid transparent; border-top-color: var(--accent); border-right-color: var(--accent-2); animation: countdownOrbit .95s linear; }
+.countdown-content h2 { margin: 24px 0 8px; font-size: clamp(22px, 4.5vw, 31px); }
+.countdown-content > small { color: var(--muted); font-size: 10px; font-weight: 800; }
+
 .quiz-content { max-width: 720px; margin: 0 auto; padding-top: 22px; }
 .quiz-status { justify-content: space-between; gap: 28px; }
 .progress-block { flex: 1; }
@@ -201,6 +210,8 @@ button:disabled { cursor: default; opacity: .42; }
 .result-actions .result-button { width: auto; min-width: 240px; margin: 0; }
 .secondary-button { min-width: 240px; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 15px 14px 20px; border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: var(--soft); cursor: pointer; font-size: 12px; font-weight: 900; }
 .secondary-button b { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; color: white; background: var(--ink); font-size: 17px; }
+.combined-review-button { border-color: color-mix(in srgb, var(--accent) 35%, transparent); color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, var(--paper)); }
+.combined-review-button b { background: var(--accent); }
 .text-button { margin: 18px auto 0; padding: 7px; border: 0; color: var(--muted); background: transparent; cursor: pointer; font-size: 11px; font-weight: 800; text-decoration: underline; text-underline-offset: 3px; }
 .complete-content { padding-top: clamp(42px, 8vw, 76px); }
 .review-time { width: min(100%, 310px); margin: 0 auto; }
@@ -209,6 +220,8 @@ button:disabled { cursor: default; opacity: .42; }
 @keyframes resultLift { 0% { opacity: .08; transform: translateY(150px) scale(1.08); } 58% { opacity: .58; } 100% { opacity: 1; transform: translateY(0) scale(1); } }
 @keyframes questionDrop { from { opacity: .25; transform: translateY(-22px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes streamGlow { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+@keyframes countdownPop { from { opacity: .15; transform: scale(.62); } 55% { opacity: 1; transform: scale(1.08); } to { transform: scale(1); } }
+@keyframes countdownOrbit { from { transform: rotate(-100deg); } to { transform: rotate(0deg); } }
 
 @media (max-width: 760px) {
   .app-shell { place-items: start center; padding: 0; }
@@ -234,6 +247,7 @@ button:disabled { cursor: default; opacity: .42; }
   .stepper button { width: 31px; height: 31px; }
   .stepper strong { min-width: 61px; font-size: 23px; }
   .primary-button { width: 100%; min-width: 165px; }
+  .countdown-content { min-height: calc(100svh - 95px); padding-bottom: 90px; }
   .quiz-content { padding-top: 17px; }
   .quiz-tools { gap: 7px; }
   .sound-toggle { width: 35px; height: 35px; border-radius: 11px; }
