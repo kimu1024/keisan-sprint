@@ -139,7 +139,6 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
 
       const styles = getComputedStyle(canvas);
       const accent = styles.getPropertyValue('--accent').trim() || '#659fd3';
-      const accentTwo = styles.getPropertyValue('--accent-2').trim() || '#8bbbe3';
       const ink = styles.getPropertyValue('--ink').trim() || '#183153';
       const muted = styles.getPropertyValue('--muted').trim() || '#738097';
       const padding = { top: 28, right: 52, bottom: 34, left: 48 };
@@ -233,16 +232,6 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
       context.setLineDash([7, 5]);
       context.stroke();
       context.setLineDash([]);
-      cumulative.forEach((value, index) => {
-        if (index !== cumulative.length - 1 && index % Math.max(1, Math.floor(records.length / 8)) !== 0) return;
-        context.beginPath();
-        context.arc(x(index), cumulativeY(value), 3.5, 0, Math.PI * 2);
-        context.fillStyle = accentTwo;
-        context.fill();
-        context.strokeStyle = ink;
-        context.lineWidth = 1.5;
-        context.stroke();
-      });
 
       context.fillStyle = muted;
       context.textAlign = 'center';
