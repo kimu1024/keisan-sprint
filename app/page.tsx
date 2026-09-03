@@ -139,23 +139,30 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
 
       const styles = getComputedStyle(canvas);
       const accent = styles.getPropertyValue('--accent').trim() || '#659fd3';
+      const accentTwo = styles.getPropertyValue('--accent-2').trim() || '#8bbbe3';
       const ink = styles.getPropertyValue('--ink').trim() || '#183153';
       const muted = styles.getPropertyValue('--muted').trim() || '#738097';
-      const padding = { top: 20, right: 18, bottom: 34, left: 48 };
+      const padding = { top: 28, right: 52, bottom: 34, left: 48 };
       const chartWidth = width - padding.left - padding.right;
       const chartHeight = height - padding.top - padding.bottom;
       const maximum = Math.max(...records.map((record) => record.elapsed), 1000);
       const ceiling = Math.ceil(maximum / 1000) * 1000;
+      let cumulativeTotal = 0;
+      const cumulative = records.map((record) => {
+        cumulativeTotal += record.elapsed;
+        return cumulativeTotal;
+      });
+      const cumulativeCeiling = Math.max(Math.ceil(cumulativeTotal / 1000) * 1000, 1000);
       const x = (index: number) => padding.left + (records.length === 1 ? chartWidth / 2 : (index / (records.length - 1)) * chartWidth);
-      const y = (value: number) => padding.top + chartHeight - (value / ceiling) * chartHeight;
+      const paceY = (value: number) => padding.top + chartHeight - (value / ceiling) * chartHeight;
+      const cumulativeY = (value: number) => padding.top + chartHeight - (value / cumulativeCeiling) * chartHeight;
 
       context.clearRect(0, 0, width, height);
       context.font = '700 10px system-ui, sans-serif';
-      context.textAlign = 'right';
       context.textBaseline = 'middle';
       for (let line = 0; line <= 4; line += 1) {
         const value = (ceiling / 4) * line;
-        const lineY = y(value);
+        const lineY = paceY(value);
         context.strokeStyle = `${ink}14`;
         context.lineWidth = 1;
         context.beginPath();
@@ -163,16 +170,30 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
         context.lineTo(width - padding.right, lineY);
         context.stroke();
         context.fillStyle = muted;
+        context.textAlign = 'right';
         context.fillText(`${(value / 1000).toFixed(value < 1000 ? 1 : 0)}s`, padding.left - 9, lineY);
+        const cumulativeValue = (cumulativeCeiling / 4) * line;
+        context.fillStyle = ink;
+        context.textAlign = 'left';
+        context.fillText(`${(cumulativeValue / 1000).toFixed(cumulativeValue < 1000 ? 1 : 0)}s`, width - padding.right + 9, lineY);
       }
+
+      context.font = '900 8px system-ui, sans-serif';
+      context.textBaseline = 'top';
+      context.fillStyle = accent;
+      context.textAlign = 'left';
+      context.fillText('1問', 5, 6);
+      context.fillStyle = ink;
+      context.textAlign = 'right';
+      context.fillText('累積', width - 5, 6);
 
       const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + chartHeight);
       gradient.addColorStop(0, `${accent}55`);
       gradient.addColorStop(1, `${accent}06`);
       context.beginPath();
       records.forEach((record, index) => {
-        if (index === 0) context.moveTo(x(index), y(record.elapsed));
-        else context.lineTo(x(index), y(record.elapsed));
+        if (index === 0) context.moveTo(x(index), paceY(record.elapsed));
+        else context.lineTo(x(index), paceY(record.elapsed));
       });
       context.lineTo(x(records.length - 1), padding.top + chartHeight);
       context.lineTo(x(0), padding.top + chartHeight);
@@ -182,8 +203,8 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
 
       context.beginPath();
       records.forEach((record, index) => {
-        if (index === 0) context.moveTo(x(index), y(record.elapsed));
-        else context.lineTo(x(index), y(record.elapsed));
+        if (index === 0) context.moveTo(x(index), paceY(record.elapsed));
+        else context.lineTo(x(index), paceY(record.elapsed));
       });
       context.strokeStyle = accent;
       context.lineWidth = 3;
@@ -194,11 +215,32 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
       const slowest = Math.max(...records.map((record) => record.elapsed));
       records.forEach((record, index) => {
         context.beginPath();
-        context.arc(x(index), y(record.elapsed), record.elapsed === slowest ? 5 : 3, 0, Math.PI * 2);
+        context.arc(x(index), paceY(record.elapsed), record.elapsed === slowest ? 5 : 3, 0, Math.PI * 2);
         context.fillStyle = record.elapsed === slowest ? '#ff4775' : accent;
         context.fill();
         context.strokeStyle = '#ffffff';
         context.lineWidth = 2;
+        context.stroke();
+      });
+
+      context.beginPath();
+      cumulative.forEach((value, index) => {
+        if (index === 0) context.moveTo(x(index), cumulativeY(value));
+        else context.lineTo(x(index), cumulativeY(value));
+      });
+      context.strokeStyle = ink;
+      context.lineWidth = 2.5;
+      context.setLineDash([7, 5]);
+      context.stroke();
+      context.setLineDash([]);
+      cumulative.forEach((value, index) => {
+        if (index !== cumulative.length - 1 && index % Math.max(1, Math.floor(records.length / 8)) !== 0) return;
+        context.beginPath();
+        context.arc(x(index), cumulativeY(value), 3.5, 0, Math.PI * 2);
+        context.fillStyle = accentTwo;
+        context.fill();
+        context.strokeStyle = ink;
+        context.lineWidth = 1.5;
         context.stroke();
       });
 
@@ -218,7 +260,7 @@ function PerformanceChart({ records, theme }: { records: RecordItem[]; theme: Th
     return () => observer.disconnect();
   }, [records, theme]);
 
-  return <canvas ref={canvasRef} className="performance-chart" aria-label="問題ごとの回答時間グラフ" />;
+  return <canvas ref={canvasRef} className="performance-chart" aria-label="問題ごとの回答時間と累積時間のグラフ" />;
 }
 
 export default function Home() {
@@ -345,6 +387,7 @@ export default function Home() {
   };
 
   const currentProblem = phase === 'review' ? reviewProblems[reviewIndex] : problems[currentIndex];
+  const nextProblem = phase === 'review' ? reviewProblems[reviewIndex + 1] : problems[currentIndex + 1];
   const progressCurrent = phase === 'review' ? reviewIndex + 1 : currentIndex + 1;
   const progressTotal = phase === 'review' ? reviewProblems.length : problems.length;
 
@@ -564,6 +607,7 @@ export default function Home() {
                     type="range"
                     min="1"
                     max={maxProblemCount}
+                    step="1"
                     value={selectedCount}
                     onChange={(event) => setProblemCount(Number(event.target.value))}
                     aria-label="問題数"
@@ -647,6 +691,13 @@ export default function Home() {
             </div>
 
             <div key={`${phase}-${currentProblem.id}`} className="problem-stage">
+              {nextProblem && (
+                <div className="next-problem" aria-label={`次の問題は${nextProblem.left}${nextProblem.operator}${nextProblem.right}`}>
+                  <span>NEXT</span>
+                  <strong>{nextProblem.left} {nextProblem.operator} {nextProblem.right}</strong>
+                  <i aria-hidden="true">›</i>
+                </div>
+              )}
               {phase === 'review' && (
                 <p className="review-kicker">
                   {reviewKind === 'mistakes'
@@ -670,9 +721,11 @@ export default function Home() {
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
                 <button key={digit} onClick={() => inputDigit(String(digit))}>{digit}</button>
               ))}
+              <button className="key-zero" onClick={() => inputDigit('0')}>0</button>
               <button className="key-action" onClick={eraseDigit} aria-label="一文字消す">⌫</button>
-              <button onClick={() => inputDigit('0')}>0</button>
-              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定">決定</button>
+              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定">
+                <span>こたえる</span><b aria-hidden="true">↵</b>
+              </button>
             </div>
           </div>
         )}
@@ -702,8 +755,12 @@ export default function Home() {
               </div>
               <div className="chart-card">
                 <div className="chart-title">
-                  <span>1問ごとのタイム</span>
-                  <small><i /> 赤い点は一番時間がかかった問題</small>
+                  <span>タイム推移</span>
+                  <div className="chart-legend" aria-label="グラフの凡例">
+                    <small><i className="legend-pace" />1問</small>
+                    <small><i className="legend-total" />累積</small>
+                    <small><i className="legend-slowest" />最長</small>
+                  </div>
                 </div>
                 <PerformanceChart records={records} theme={theme} />
               </div>
