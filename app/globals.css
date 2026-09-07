@@ -201,6 +201,7 @@ button:disabled { cursor: default; opacity: .42; }
 .mic-wait-stage { gap: 12px; color: #805b0b; background: linear-gradient(135deg, color-mix(in srgb, #fff7de 86%, transparent), color-mix(in srgb, var(--soft) 72%, transparent)); border: 1px dashed #d9a842; border-radius: 20px; }
 .mic-wait-stage > strong { font-size: clamp(18px, 4vw, 25px); letter-spacing: .05em; }
 .mic-wait-stage > small { color: #8a6b28; font-size: 13px; font-weight: 800; }
+.voice-confirm-stage { border-style: solid; }
 .mic-wait-pulse { height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; }
 .mic-wait-pulse i { width: 7px; height: 15px; border-radius: 99px; background: #d9a842; animation: micWaitPulse .8s ease-in-out infinite alternate; }
 .mic-wait-pulse i:nth-child(2) { height: 30px; animation-delay: -.3s; }

@@ -32,7 +32,7 @@ export function parseSpokenNumber(raw: string): number | null {
   return null;
 }
 
-export type VoiceTicket = { finish(): Promise<VoiceResult>; cancel(): void };
+export type VoiceTicket = { finish(graceMs?: number): Promise<VoiceResult>; cancel(): void };
 export type VoiceLifecycle = { onListening?: () => void; onUnavailable?: () => void };
 
 // Each question owns a separate SpeechRecognition instance. Starting the next
@@ -51,6 +51,8 @@ export class VoiceCapture {
     let sealed = false;
     let settled = false;
     let released = false;
+    let stopping = false;
+    let graceTimeout: ReturnType<typeof setTimeout> | undefined;
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let release!: () => void;
     let resolve!: (result: VoiceResult) => void;
@@ -63,6 +65,7 @@ export class VoiceCapture {
     const settle = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(graceTimeout);
       clearTimeout(timeout);
       const value = parseSpokenNumber(transcript);
       resolve({ transcript, value, error: value === null ? error : undefined });
@@ -74,8 +77,21 @@ export class VoiceCapture {
       void previous.then(() => { release(); settle(); });
     };
 
+    const stopListening = () => {
+      if (stopping || settled) return;
+      stopping = true;
+      try { recognition?.stop(); } catch { ended = true; release(); settle(); }
+      if (settled) return;
+      timeout = setTimeout(() => {
+        error = transcript ? error : '認識がタイムアウトしました';
+        ended = true;
+        try { recognition?.abort(); } catch { /* Already stopped. */ }
+        release(); settle();
+      }, 8000);
+    };
+
     const ticket: VoiceTicket = {
-      finish: () => {
+      finish: (graceMs = 0) => {
         if (sealed) return result;
         sealed = true;
         if (!listening) {
@@ -86,14 +102,11 @@ export class VoiceCapture {
           }
           return result;
         }
-        try { recognition?.stop(); } catch { ended = true; release(); settle(); }
-        if (settled) return result;
-        timeout = setTimeout(() => {
-          error = transcript ? error : '認識がタイムアウトしました';
-          ended = true;
-          try { recognition?.abort(); } catch { /* Already stopped. */ }
-          release(); settle();
-        }, 8000);
+        if (graceMs > 0 && parseSpokenNumber(transcript) === null) {
+          graceTimeout = setTimeout(stopListening, graceMs);
+        } else {
+          stopListening();
+        }
         return result;
       },
       cancel: () => {
@@ -125,6 +138,10 @@ export class VoiceCapture {
         recognition.onresult = (event) => {
           if (settled || ended) return;
           transcript = Array.from(event.results).map((item) => item[0].transcript.trim()).filter(Boolean).join(' / ');
+          if (sealed && parseSpokenNumber(transcript) !== null) {
+            clearTimeout(graceTimeout);
+            stopListening();
+          }
           if (!sealed) update(`聞き取り中 · 最後の数字：${parseSpokenNumber(transcript) ?? '…'}（まだ確定前）`);
         };
         recognition.onerror = (event) => {

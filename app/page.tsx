@@ -276,6 +276,7 @@ export default function Home() {
   const [voiceStatus, setVoiceStatus] = useState('');
   const [voiceRetry, setVoiceRetry] = useState(0);
   const [voiceReady, setVoiceReady] = useState(false);
+  const [voiceConfirming, setVoiceConfirming] = useState(false);
   const voiceCapture = useRef<VoiceCapture | null>(null);
   const voiceTicket = useRef<VoiceTicket | null>(null);
   const runId = useRef(0);
@@ -449,6 +450,7 @@ export default function Home() {
     voiceCapture.current?.cancelAll();
     voiceWaitStartedAt.current = null;
     setVoiceReady(false);
+    setVoiceConfirming(false);
     submittedQuestion.current = '';
     setProblems(shuffle(problemBank).slice(0, selectedCount));
     setRecords([]);
@@ -494,6 +496,7 @@ export default function Home() {
     voiceCapture.current?.cancelAll();
     voiceWaitStartedAt.current = null;
     setVoiceReady(false);
+    setVoiceConfirming(false);
     setPhase('setup');
     setAnswer('');
     setLastResult(null);
@@ -540,9 +543,19 @@ export default function Home() {
       const duration = now - questionStartedAt.current;
       const sequence = ++resultSequence.current;
       voiceTicket.current = null;
+      voiceWaitStartedAt.current = now;
+      setVoiceReady(false);
+      setVoiceConfirming(true);
+      setVoiceStatus('音声を確認中 · 最大1秒');
       setRecords((current) => [...current, { ...problem, elapsed: duration, mistakes: 0, status: 'pending' }]);
-      const recognition = ticket?.finish() ?? Promise.resolve({ transcript: '', value: null, error: '音声がありません' });
-      moveForward(now);
+      const recognition = ticket?.finish(1000) ?? Promise.resolve({ transcript: '', value: null, error: '音声がありません' });
+      const grace = new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+      void Promise.race([recognition.then(() => undefined), grace]).then(() => {
+        if (runId.current !== thisRun) return;
+        resumeVoiceClock(false);
+        setVoiceConfirming(false);
+        moveForward(performance.now());
+      });
       void recognition.then((result) => {
         if (runId.current !== thisRun) return;
         const givenAnswer = result.value;
@@ -747,13 +760,13 @@ export default function Home() {
           <div className="quiz-content">
             {voiceEnabled && phase === 'quiz' && (
               <div className={`voice-strip ${voiceReady ? '' : 'voice-preparing'}`}>
-                <div><strong>{voiceReady ? '● こたえてOK' : '◷ マイク準備中 · タイム停止'}</strong><span role="status">{voiceStatus}</span><small>{voiceReady ? '答えを言ってから「次へ」' : '問題を見ながら待ってね · テンキーは使えます'}</small></div>
-                <button onClick={() => {
+                <div><strong>{voiceConfirming ? '◷ こえを確認中 · タイム停止' : voiceReady ? '● こたえてOK' : '◷ マイク準備中 · タイム停止'}</strong><span role="status">{voiceStatus}</span><small>{voiceConfirming ? '数字が届いたら次へ進みます · 最大1秒' : voiceReady ? '答えを言ってから「次へ」' : 'つながったら問題が出るよ'}</small></div>
+                {!voiceConfirming && <button onClick={() => {
                   if (voiceWaitStartedAt.current === null) voiceWaitStartedAt.current = performance.now();
                   setVoiceReady(false);
                   voiceTicket.current?.cancel();
                   setVoiceRetry((value) => value + 1);
-                }}>マイク再開</button>
+                }}>マイク再開</button>}
                 <button onClick={toggleVoice}>OFF</button>
               </div>
             )}
@@ -776,7 +789,7 @@ export default function Home() {
                 >
                   <span aria-hidden="true">{soundEnabled ? '♪' : '×'}</span>
                 </button>
-                <div className={`stopwatch ${voiceEnabled && !voiceReady ? 'is-paused' : ''}`}><span>{voiceEnabled && !voiceReady ? 'MIC WAIT' : 'TIME'}</span><strong>{formatTime(elapsed)}</strong></div>
+                <div className={`stopwatch ${voiceEnabled && !voiceReady ? 'is-paused' : ''}`}><span>{voiceConfirming ? 'VOICE CHECK' : voiceEnabled && !voiceReady ? 'MIC WAIT' : 'TIME'}</span><strong>{formatTime(elapsed)}</strong></div>
               </div>
             </div>
 
@@ -813,7 +826,13 @@ export default function Home() {
               )}
             </div>
 
-            {voiceEnabled && phase === 'quiz' && !voiceReady ? (
+            {voiceConfirming ? (
+              <div className="problem-stage mic-wait-stage voice-confirm-stage" role="status" aria-live="polite" aria-busy="true">
+                <div className="mic-wait-pulse" aria-hidden="true"><i /><i /><i /></div>
+                <strong>こえを かくにんちゅう</strong>
+                <small>タイムは とまっているよ</small>
+              </div>
+            ) : voiceEnabled && phase === 'quiz' && !voiceReady ? (
               <div className="problem-stage mic-wait-stage" role="status" aria-live="polite" aria-busy="true">
                 <div className="mic-wait-pulse" aria-hidden="true"><i /><i /><i /></div>
                 <strong>マイクを じゅんびちゅう</strong>
@@ -850,12 +869,12 @@ export default function Home() {
 
             <div className="keypad" aria-label="数字入力">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
-                <button key={digit} onClick={() => inputDigit(String(digit))}>{digit}</button>
+                <button key={digit} onClick={() => inputDigit(String(digit))} disabled={voiceConfirming}>{digit}</button>
               ))}
-              <button className="key-zero" onClick={() => inputDigit('0')}>0</button>
-              <button className="key-action" onClick={eraseDigit} aria-label="一文字消す">⌫</button>
-              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定" disabled={voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady}>
-                <span>{voiceEnabled && phase === 'quiz' && answer === '' ? voiceReady ? '次へ' : 'マイク待ち' : 'こたえる'}</span><b aria-hidden="true">{voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady ? '◷' : '↵'}</b>
+              <button className="key-zero" onClick={() => inputDigit('0')} disabled={voiceConfirming}>0</button>
+              <button className="key-action" onClick={eraseDigit} aria-label="一文字消す" disabled={voiceConfirming}>⌫</button>
+              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定" disabled={voiceConfirming || (voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady)}>
+                <span>{voiceConfirming ? '確認中' : voiceEnabled && phase === 'quiz' && answer === '' ? voiceReady ? '次へ' : 'マイク待ち' : 'こたえる'}</span><b aria-hidden="true">{voiceConfirming || (voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady) ? '◷' : '↵'}</b>
               </button>
             </div>
           </div>

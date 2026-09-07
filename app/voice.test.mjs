@@ -89,6 +89,47 @@ test('the next question becomes answerable only after its microphone starts', as
   capture.cancelAll();
 });
 
+test('Next keeps listening briefly and stops the grace period when a number arrives', async () => {
+  let recognition;
+  class MockRecognition {
+    constructor() { recognition = this; }
+    start() { this.onstart?.(); }
+    stop() { this.stopped = true; }
+    abort() { this.onend?.(); }
+  }
+  globalThis.window = { SpeechRecognition: MockRecognition };
+  const capture = new VoiceCapture();
+  const ticket = capture.begin(() => {});
+  await Promise.resolve();
+  const pending = ticket.finish(1000);
+  assert.equal(recognition.stopped, undefined);
+  recognition.onresult({ results: [speechResult('13', false)] });
+  assert.equal(recognition.stopped, true);
+  recognition.onend();
+  assert.equal((await pending).value, 13);
+  capture.cancelAll();
+});
+
+test('the grace period stops at its configured maximum', async () => {
+  let recognition;
+  class MockRecognition {
+    constructor() { recognition = this; }
+    start() { this.onstart?.(); }
+    stop() { this.stopped = true; }
+    abort() { this.onend?.(); }
+  }
+  globalThis.window = { SpeechRecognition: MockRecognition };
+  const capture = new VoiceCapture();
+  const ticket = capture.begin(() => {});
+  await Promise.resolve();
+  const pending = ticket.finish(5);
+  await new Promise((resolve) => setTimeout(resolve, 15));
+  assert.equal(recognition.stopped, true);
+  recognition.onend();
+  assert.equal((await pending).value, null);
+  capture.cancelAll();
+});
+
 test('pressing Next while a microphone is queued becomes unrecognized without stealing audio', async () => {
   const instances = [];
   class MockRecognition {
