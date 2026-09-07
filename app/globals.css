@@ -13,6 +13,9 @@ fieldset.result-actions { padding: 0; border: 0; min-width: 0; }
 .voice-strip button { padding: 8px; white-space: nowrap; }
 .voice-strip.voice-preparing { border-color: #d9a842; background: #fff7de; }
 .voice-strip.voice-preparing strong { color: #805b0b; font-size: 11px; letter-spacing: 0; }
+.stopwatch.is-paused { border-color: #d9a842; background: #fff7de; }
+.stopwatch.is-paused span, .stopwatch.is-paused strong { color: #805b0b; }
+.key-submit:disabled { opacity: .58; cursor: wait; filter: saturate(.45); }
 .recognition-pending { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 12px; border: 1px solid #e7bd59; border-radius: 15px; color: #72500b; background: #fff5d7; text-align: left; }
 .recognition-pending strong { display: block; font-size: 13px; }
 .recognition-pending b { display: inline-block; margin-left: 5px; padding: 3px 8px; border-radius: 99px; background: #f4d477; font-size: 14px; }
@@ -195,6 +198,14 @@ button:disabled { cursor: default; opacity: .42; }
 .equation strong { min-width: 1.35em; padding-bottom: 7px; color: var(--accent); border-bottom: 5px solid var(--accent); font: 900 clamp(52px, 10vw, 82px)/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; }
 .equation strong.empty { color: color-mix(in srgb, var(--muted) 45%, transparent); border-bottom-color: color-mix(in srgb, var(--muted) 28%, transparent); }
 .feedback-message { min-height: 22px; margin: 18px 0 0; color: var(--muted); font-size: 12px; font-weight: 800; }
+.mic-wait-stage { gap: 12px; color: #805b0b; background: linear-gradient(135deg, color-mix(in srgb, #fff7de 86%, transparent), color-mix(in srgb, var(--soft) 72%, transparent)); border: 1px dashed #d9a842; border-radius: 20px; }
+.mic-wait-stage > strong { font-size: clamp(18px, 4vw, 25px); letter-spacing: .05em; }
+.mic-wait-stage > small { color: #8a6b28; font-size: 13px; font-weight: 800; }
+.mic-wait-pulse { height: 34px; display: flex; align-items: center; justify-content: center; gap: 7px; }
+.mic-wait-pulse i { width: 7px; height: 15px; border-radius: 99px; background: #d9a842; animation: micWaitPulse .8s ease-in-out infinite alternate; }
+.mic-wait-pulse i:nth-child(2) { height: 30px; animation-delay: -.3s; }
+.mic-wait-pulse i:nth-child(3) { height: 21px; animation-delay: -.55s; }
+@keyframes micWaitPulse { from { transform: scaleY(.4); opacity: .45; } to { transform: scaleY(1); opacity: 1; } }
 
 .keypad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; max-width: 460px; margin: 0 auto; }
 .keypad button { height: clamp(54px, 8vh, 66px); border: 1px solid var(--line); border-radius: 16px; color: var(--ink); background: color-mix(in srgb, var(--paper) 95%, transparent); box-shadow: 0 4px 10px color-mix(in srgb, var(--ink) 6%, transparent); cursor: pointer; font: 900 25px/1 ui-rounded, "Arial Rounded MT Bold", sans-serif; transition: transform .08s ease, background .1s ease; }

@@ -275,6 +275,7 @@ export default function Home() {
   const [voiceSupported, setVoiceSupported] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState('');
   const [voiceRetry, setVoiceRetry] = useState(0);
+  const [voiceReady, setVoiceReady] = useState(false);
   const voiceCapture = useRef<VoiceCapture | null>(null);
   const voiceTicket = useRef<VoiceTicket | null>(null);
   const runId = useRef(0);
@@ -284,6 +285,7 @@ export default function Home() {
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
   const sessionStartedAt = useRef(0);
   const questionStartedAt = useRef(0);
+  const voiceWaitStartedAt = useRef<number | null>(null);
   const resultSequence = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -320,7 +322,7 @@ export default function Home() {
 
   useEffect(() => {
     if (phase !== 'quiz' && phase !== 'review') return;
-    const timer = window.setInterval(() => setElapsed(performance.now() - sessionStartedAt.current), 50);
+    const timer = window.setInterval(() => setElapsed((voiceWaitStartedAt.current ?? performance.now()) - sessionStartedAt.current), 50);
     return () => window.clearInterval(timer);
   }, [phase]);
 
@@ -334,11 +336,15 @@ export default function Home() {
       const now = performance.now();
       sessionStartedAt.current = now;
       questionStartedAt.current = now;
+      if (voiceEnabled) {
+        voiceWaitStartedAt.current = now;
+        setVoiceReady(false);
+      }
       setElapsed(0);
       setPhase('quiz');
     }, 1000);
     return () => window.clearTimeout(timer);
-  }, [countdown, phase]);
+  }, [countdown, phase, voiceEnabled]);
 
   const chooseTheme = (nextTheme: Theme) => {
     setTheme(nextTheme);
@@ -397,17 +403,35 @@ export default function Home() {
   const progressCurrent = phase === 'review' ? reviewIndex + 1 : currentIndex + 1;
   const progressTotal = phase === 'review' ? reviewProblems.length : problems.length;
 
+  const resumeVoiceClock = useCallback((ready: boolean) => {
+    const waitStartedAt = voiceWaitStartedAt.current;
+    if (waitStartedAt !== null) {
+      const waited = performance.now() - waitStartedAt;
+      sessionStartedAt.current += waited;
+      questionStartedAt.current += waited;
+      voiceWaitStartedAt.current = null;
+    }
+    setVoiceReady(ready);
+  }, []);
+
   useEffect(() => {
     if (!voiceEnabled || phase !== 'quiz' || !currentProblem) return;
     let visible = true;
-    const ticket = voiceCapture.current?.begin((status) => { if (visible) setVoiceStatus(status); });
+    const ticket = voiceCapture.current?.begin(
+      (status) => { if (visible) setVoiceStatus(status); },
+      {
+        onListening: () => { if (visible) resumeVoiceClock(true); },
+        onUnavailable: () => { if (visible) resumeVoiceClock(false); },
+      },
+    );
     voiceTicket.current = ticket ?? null;
     return () => { visible = false; void ticket?.finish(); };
-  }, [voiceEnabled, phase, currentProblem, voiceRetry]);
+  }, [voiceEnabled, phase, currentProblem, voiceRetry, resumeVoiceClock]);
 
   const toggleVoice = async () => {
     if (voiceEnabled) {
       voiceTicket.current?.cancel(); voiceTicket.current = null;
+      resumeVoiceClock(false);
       setVoiceEnabled(false); return;
     }
     try {
@@ -423,6 +447,8 @@ export default function Home() {
     if (!selectedCount) return;
     runId.current += 1;
     voiceCapture.current?.cancelAll();
+    voiceWaitStartedAt.current = null;
+    setVoiceReady(false);
     submittedQuestion.current = '';
     setProblems(shuffle(problemBank).slice(0, selectedCount));
     setRecords([]);
@@ -466,6 +492,8 @@ export default function Home() {
   const resetToSetup = () => {
     runId.current += 1;
     voiceCapture.current?.cancelAll();
+    voiceWaitStartedAt.current = null;
+    setVoiceReady(false);
     setPhase('setup');
     setAnswer('');
     setLastResult(null);
@@ -478,7 +506,11 @@ export default function Home() {
         setPhase('result');
       } else {
         setCurrentIndex((value) => value + 1);
-        questionStartedAt.current = performance.now();
+        questionStartedAt.current = answeredAt;
+        if (voiceEnabled) {
+          voiceWaitStartedAt.current = answeredAt;
+          setVoiceReady(false);
+        }
         setAnswer('');
       }
     } else if (phase === 'review') {
@@ -491,14 +523,15 @@ export default function Home() {
         setAnswer('');
       }
     }
-  }, [currentIndex, phase, problems.length, reviewIndex, reviewProblems.length]);
+  }, [currentIndex, phase, problems.length, reviewIndex, reviewProblems.length, voiceEnabled]);
 
   const submitAnswer = useCallback(() => {
     if (!currentProblem || (phase !== 'quiz' && phase !== 'review')) return;
-    if (answer === '' && !(voiceEnabled && phase === 'quiz')) return;
+    if (answer === '' && !(voiceEnabled && phase === 'quiz' && voiceReady)) return;
     const questionKey = `${runId.current}-${phase}-${currentProblem.id}`;
     if (submittedQuestion.current === questionKey) return;
     submittedQuestion.current = questionKey;
+    if (answer !== '' && voiceEnabled && phase === 'quiz') resumeVoiceClock(false);
     const now = performance.now();
     if (answer === '' && voiceEnabled && phase === 'quiz') {
       const problem = currentProblem;
@@ -549,7 +582,7 @@ export default function Home() {
     }
 
     moveForward(now);
-  }, [answer, currentProblem, moveForward, phase, playAnswerSound, voiceEnabled]);
+  }, [answer, currentProblem, moveForward, phase, playAnswerSound, resumeVoiceClock, voiceEnabled, voiceReady]);
 
   const inputDigit = useCallback((digit: string) => {
     setAnswer((value) => (value.length >= 3 ? value : `${value}${digit}`));
@@ -713,9 +746,14 @@ export default function Home() {
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
             {voiceEnabled && phase === 'quiz' && (
-              <div className={`voice-strip ${voiceStatus.includes('切替中') ? 'voice-preparing' : ''}`}>
-                <div><strong>{voiceStatus.includes('切替中') ? '◷ 次の問題へマイク切替中' : '● この問題を聞き取り中'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 問題ごとに音声を分けて判定します</small></div>
-                <button onClick={() => { voiceTicket.current?.cancel(); setVoiceRetry((value) => value + 1); }}>マイク再開</button>
+              <div className={`voice-strip ${voiceReady ? '' : 'voice-preparing'}`}>
+                <div><strong>{voiceReady ? '● こたえてOK' : '◷ マイク準備中 · タイム停止'}</strong><span role="status">{voiceStatus}</span><small>{voiceReady ? '答えを言ってから「次へ」' : '問題を見ながら待ってね · テンキーは使えます'}</small></div>
+                <button onClick={() => {
+                  if (voiceWaitStartedAt.current === null) voiceWaitStartedAt.current = performance.now();
+                  setVoiceReady(false);
+                  voiceTicket.current?.cancel();
+                  setVoiceRetry((value) => value + 1);
+                }}>マイク再開</button>
                 <button onClick={toggleVoice}>OFF</button>
               </div>
             )}
@@ -738,7 +776,7 @@ export default function Home() {
                 >
                   <span aria-hidden="true">{soundEnabled ? '♪' : '×'}</span>
                 </button>
-                <div className="stopwatch"><span>TIME</span><strong>{formatTime(elapsed)}</strong></div>
+                <div className={`stopwatch ${voiceEnabled && !voiceReady ? 'is-paused' : ''}`}><span>{voiceEnabled && !voiceReady ? 'MIC WAIT' : 'TIME'}</span><strong>{formatTime(elapsed)}</strong></div>
               </div>
             </div>
 
@@ -775,6 +813,13 @@ export default function Home() {
               )}
             </div>
 
+            {voiceEnabled && phase === 'quiz' && !voiceReady ? (
+              <div className="problem-stage mic-wait-stage" role="status" aria-live="polite" aria-busy="true">
+                <div className="mic-wait-pulse" aria-hidden="true"><i /><i /><i /></div>
+                <strong>マイクを じゅんびちゅう</strong>
+                <small>つながったら もんだいが でるよ</small>
+              </div>
+            ) : (
             <div key={`${phase}-${currentProblem.id}`} className="problem-stage">
               {nextProblem && (
                 <div className="next-problem" aria-label={`次の問題は${nextProblem.left}${nextProblem.operator}${nextProblem.right}`}>
@@ -799,8 +844,9 @@ export default function Home() {
                 <i>＝</i>
                 <strong className={answer ? '' : 'empty'}>{answer || '?'}</strong>
               </div>
-              <p className="feedback-message">{voiceEnabled && phase === 'quiz' ? '言い終わったら「次へ」· 数字を押すとテンキー優先' : 'こたえを おしてね'}</p>
+              <p className="feedback-message">{voiceEnabled && phase === 'quiz' ? voiceReady ? '言い終わったら「次へ」· 数字を押すとテンキー優先' : 'マイク準備中 · タイムは止まっています' : 'こたえを おしてね'}</p>
             </div>
+            )}
 
             <div className="keypad" aria-label="数字入力">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((digit) => (
@@ -808,8 +854,8 @@ export default function Home() {
               ))}
               <button className="key-zero" onClick={() => inputDigit('0')}>0</button>
               <button className="key-action" onClick={eraseDigit} aria-label="一文字消す">⌫</button>
-              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定">
-                <span>{voiceEnabled && phase === 'quiz' && answer === '' ? '次へ' : 'こたえる'}</span><b aria-hidden="true">↵</b>
+              <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定" disabled={voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady}>
+                <span>{voiceEnabled && phase === 'quiz' && answer === '' ? voiceReady ? '次へ' : 'マイク待ち' : 'こたえる'}</span><b aria-hidden="true">{voiceEnabled && phase === 'quiz' && answer === '' && !voiceReady ? '◷' : '↵'}</b>
               </button>
             </div>
           </div>

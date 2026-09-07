@@ -60,6 +60,35 @@ test('a result arriving after Next remains attached to the old question', async 
   capture.cancelAll();
 });
 
+test('the next question becomes answerable only after its microphone starts', async () => {
+  const instances = [];
+  class MockRecognition {
+    constructor() { instances.push(this); }
+    start() {}
+    stop() {}
+    abort() { this.onend?.(); }
+  }
+  globalThis.window = { SpeechRecognition: MockRecognition };
+  const capture = new VoiceCapture();
+  let firstReady = 0;
+  const first = capture.begin(() => {}, { onListening: () => { firstReady += 1; } });
+  await Promise.resolve();
+  assert.equal(firstReady, 0);
+  instances[0].onstart();
+  assert.equal(firstReady, 1);
+
+  first.finish();
+  let secondReady = 0;
+  capture.begin(() => {}, { onListening: () => { secondReady += 1; } });
+  assert.equal(secondReady, 0);
+  instances[0].onend();
+  await Promise.resolve();
+  assert.equal(instances.length, 2);
+  instances[1].onstart();
+  assert.equal(secondReady, 1);
+  capture.cancelAll();
+});
+
 test('pressing Next while a microphone is queued becomes unrecognized without stealing audio', async () => {
   const instances = [];
   class MockRecognition {

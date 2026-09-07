@@ -33,6 +33,7 @@ export function parseSpokenNumber(raw: string): number | null {
 }
 
 export type VoiceTicket = { finish(): Promise<VoiceResult>; cancel(): void };
+export type VoiceLifecycle = { onListening?: () => void; onUnavailable?: () => void };
 
 // Each question owns a separate SpeechRecognition instance. Starting the next
 // instance is queued until the browser releases the previous microphone, while
@@ -41,7 +42,7 @@ export class VoiceCapture {
   private tail: Promise<void> = Promise.resolve();
   private tickets = new Set<VoiceTicket>();
 
-  begin(update: (status: string) => void): VoiceTicket {
+  begin(update: (status: string) => void, lifecycle: VoiceLifecycle = {}): VoiceTicket {
     let recognition: Recognition | undefined;
     let transcript = '';
     let error: string | undefined;
@@ -111,13 +112,14 @@ export class VoiceCapture {
     void previous.then(() => {
       if (sealed) { release(); settle(); return; }
       const Constructor = recognitionConstructor();
-      if (!Constructor) { error = '音声認識に対応していません'; ended = true; release(); update(error); return; }
+      if (!Constructor) { error = '音声認識に対応していません'; ended = true; release(); lifecycle.onUnavailable?.(); update(error); return; }
       try {
         recognition = new Constructor();
         recognition.lang = 'ja-JP'; recognition.continuous = true; recognition.interimResults = true;
         recognition.onstart = () => {
           if (sealed) { try { recognition?.abort(); } catch { release(); } return; }
           listening = true;
+          lifecycle.onListening?.();
           update('聞き取り中 · この問題の答えを言って「次へ」');
         };
         recognition.onresult = (event) => {
@@ -128,16 +130,18 @@ export class VoiceCapture {
         recognition.onerror = (event) => {
           if (ended) return;
           error = event.error === 'not-allowed' ? 'マイクを許可してください' : `聞き取れませんでした（${event.error}）`;
+          if (!listening) lifecycle.onUnavailable?.();
           if (!sealed) update(`${error} · テンキーで回答できます`);
         };
         recognition.onend = () => {
+          if (!listening) lifecycle.onUnavailable?.();
           listening = false; ended = true; release();
           if (sealed) settle();
           else update(transcript ? `認識：${transcript} · 次へ進めます` : `${error ?? '音声がありません'} · マイクを再開できます`);
         };
         recognition.start();
       } catch {
-        error = 'マイクを開始できませんでした'; ended = true; release(); update(`${error} · テンキーで回答できます`);
+        error = 'マイクを開始できませんでした'; ended = true; release(); lifecycle.onUnavailable?.(); update(`${error} · テンキーで回答できます`);
       }
     });
     return ticket;
