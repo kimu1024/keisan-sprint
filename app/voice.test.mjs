@@ -2,98 +2,102 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { VoiceCapture, parseSpokenNumber } from './voice.ts';
 
-const speechResult = (transcript, isFinal) => ({ isFinal, 0: { transcript } });
+const speechResult = (transcript, isFinal = true) => ({ isFinal, 0: { transcript } });
 
-test('last spoken number wins', () => {
+test('last spoken number wins inside one question', () => {
   for (const [text, number] of [['/ 16', 16], ['12 / 16', 16], ['16 / 12', 12], ['三十六', 36], ['十五 / じゅうろく', 16]]) {
     assert.equal(parseSpokenNumber(text), number);
   }
 });
 
-test('one continuous microphone serves consecutive questions', async () => {
+test('each question uses a separate microphone and never concatenates answers', async () => {
   const instances = [];
-  class MockRecognition { constructor() { instances.push(this); } start() { this.onstart?.(); } abort() {} }
+  class MockRecognition {
+    constructor() { instances.push(this); }
+    start() { this.onstart?.(); }
+    stop() { this.stopped = true; }
+    abort() { this.onend?.(); }
+    result(transcript) { this.onresult({ results: [speechResult(transcript)] }); }
+    end() { this.onend(); }
+  }
   globalThis.window = { SpeechRecognition: MockRecognition };
   const capture = new VoiceCapture();
   const first = capture.begin(() => {});
-  instances[0].onresult({ resultIndex: 0, results: [speechResult('16', false)] });
+  await Promise.resolve();
   const firstResult = first.finish();
   const second = capture.begin(() => {});
   assert.equal(instances.length, 1);
-  instances[0].onresult({ resultIndex: 0, results: [speechResult('16', true)] });
-  assert.equal((await firstResult).value, 16);
-  instances[0].onresult({ resultIndex: 1, results: [speechResult('16', true), speechResult('8', true)] });
-  assert.equal((await second.finish()).value, 8);
-  assert.equal(instances.length, 1);
-  capture.cancelAll();
-});
-
-test('rapid Next presses while the microphone connects do not start another recognizer', () => {
-  const instances = [];
-  class MockRecognition { constructor() { instances.push(this); } start() {} abort() {} }
-  globalThis.window = { SpeechRecognition: MockRecognition };
-  const capture = new VoiceCapture();
-  capture.begin(() => {}).finish();
-  capture.begin(() => {}).finish();
-  assert.equal(instances.length, 1);
-  capture.cancelAll();
-});
-
-test('answers arriving after Next resolve queued questions in order', async () => {
-  let recognition;
-  class MockRecognition { constructor() { recognition = this; } start() { this.onstart?.(); } abort() {} }
-  globalThis.window = { SpeechRecognition: MockRecognition };
-  const capture = new VoiceCapture();
-  const first = capture.begin(() => {});
-  const pendingFirst = first.finish();
-  const second = capture.begin(() => {});
-  recognition.onresult({ resultIndex: 0, results: [speechResult('7', true)] });
-  assert.equal((await pendingFirst).value, 7);
-  const pendingSecond = second.finish();
-  recognition.onresult({ resultIndex: 1, results: [speechResult('7', true), speechResult('12', true)] });
-  assert.equal((await pendingSecond).value, 12);
-  capture.cancelAll();
-});
-
-test('a batch of final answers is distributed across queued questions', async () => {
-  let recognition;
-  class MockRecognition { constructor() { recognition = this; } start() { this.onstart?.(); } abort() {} }
-  globalThis.window = { SpeechRecognition: MockRecognition };
-  const capture = new VoiceCapture();
-  const first = capture.begin(() => {});
-  const pendingFirst = first.finish();
-  const second = capture.begin(() => {});
-  const pendingSecond = second.finish();
-  recognition.onresult({ resultIndex: 0, results: [speechResult('', true), speechResult('7', true), speechResult('12', true)] });
-  assert.equal((await pendingFirst).value, 7);
-  assert.equal((await pendingSecond).value, 12);
-  capture.cancelAll();
-});
-
-test('a nonfatal end restarts recognition without losing the active ticket', async () => {
-  const instances = [];
-  class MockRecognition { constructor() { instances.push(this); } start() { this.onstart?.(); } abort() {} }
-  globalThis.window = { SpeechRecognition: MockRecognition };
-  const capture = new VoiceCapture();
-  const ticket = capture.begin(() => {});
-  instances[0].onend();
-  await new Promise((resolve) => setTimeout(resolve, 100));
+  instances[0].result('13');
+  instances[0].end();
+  assert.equal((await firstResult).value, 13);
+  await Promise.resolve();
   assert.equal(instances.length, 2);
-  instances[1].onresult({ resultIndex: 0, results: [speechResult('9', true)] });
-  assert.equal((await ticket.finish()).value, 9);
+  instances[1].result('10');
+  const secondResult = second.finish();
+  instances[1].end();
+  assert.equal((await secondResult).value, 10);
+  assert.equal((await secondResult).transcript, '10');
   capture.cancelAll();
 });
 
-test('a result survives a later nonfatal recognition error', async () => {
+test('a result arriving after Next remains attached to the old question', async () => {
+  let firstRecognition;
+  class MockRecognition {
+    constructor() { firstRecognition ??= this; }
+    start() { this.onstart?.(); }
+    stop() {}
+    abort() { this.onend?.(); }
+  }
+  globalThis.window = { SpeechRecognition: MockRecognition };
+  const capture = new VoiceCapture();
+  const first = capture.begin(() => {});
+  await Promise.resolve();
+  const pending = first.finish();
+  capture.begin(() => {});
+  firstRecognition.onresult({ results: [speechResult('13')] });
+  firstRecognition.onend();
+  assert.equal((await pending).value, 13);
+  capture.cancelAll();
+});
+
+test('pressing Next while a microphone is queued becomes unrecognized without stealing audio', async () => {
+  const instances = [];
+  class MockRecognition {
+    constructor() { instances.push(this); }
+    start() { this.onstart?.(); }
+    stop() {}
+    abort() { this.onend?.(); }
+  }
+  globalThis.window = { SpeechRecognition: MockRecognition };
+  const capture = new VoiceCapture();
+  const first = capture.begin(() => {});
+  await Promise.resolve();
+  first.finish();
+  const queued = capture.begin(() => {});
+  const queuedResult = queued.finish();
+  instances[0].onend();
+  assert.equal((await queuedResult).value, null);
+  await Promise.resolve();
+  assert.equal(instances.length, 1);
+  capture.cancelAll();
+});
+
+test('a recognized number survives a later stop error', async () => {
   let recognition;
-  class MockRecognition { constructor() { recognition = this; } start() { this.onstart?.(); } abort() {} }
+  class MockRecognition {
+    constructor() { recognition = this; }
+    start() { this.onstart?.(); }
+    stop() {}
+    abort() { this.onend?.(); }
+  }
   globalThis.window = { SpeechRecognition: MockRecognition };
   const capture = new VoiceCapture();
   const ticket = capture.begin(() => {});
-  recognition.onresult({ resultIndex: 0, results: [speechResult('6', false)] });
+  await Promise.resolve();
+  recognition.onresult({ results: [speechResult('16')] });
   const result = ticket.finish();
   recognition.onerror({ error: 'no-speech' });
-  recognition.onresult({ resultIndex: 0, results: [speechResult('6', true)] });
-  assert.equal((await result).value, 6);
+  recognition.onend();
+  assert.equal((await result).value, 16);
   capture.cancelAll();
 });

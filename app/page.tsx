@@ -20,7 +20,7 @@ type RecordItem = Problem & { elapsed: number; mistakes: number; givenAnswer?: n
 type LastResult = {
   sequence: number;
   problem: Problem;
-  givenAnswer: number;
+  givenAnswer: number | null;
   isCorrect: boolean;
 };
 
@@ -512,12 +512,10 @@ export default function Home() {
       moveForward(now);
       void recognition.then((result) => {
         if (runId.current !== thisRun) return;
-        if (result.value !== null) {
-          const givenAnswer = result.value;
-          setLastResult((current) => current && current.sequence > sequence ? current : {
-            sequence, problem, givenAnswer, isCorrect: givenAnswer === problem.answer,
-          });
-        }
+        const givenAnswer = result.value;
+        setLastResult((current) => current && current.sequence > sequence ? current : {
+          sequence, problem, givenAnswer, isCorrect: givenAnswer !== null && givenAnswer === problem.answer,
+        });
         setRecords((current) => current.map((record) => record.id === problem.id ? {
           ...record, givenAnswer: result.value, transcript: result.transcript || result.error || '音声がありません',
           status: result.value === null ? 'unrecognized' : 'done',
@@ -715,8 +713,8 @@ export default function Home() {
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
             {voiceEnabled && phase === 'quiz' && (
-              <div className={`voice-strip ${voiceStatus.includes('接続中') ? 'voice-preparing' : ''}`}>
-                <div><strong>{voiceStatus.includes('接続中') ? '◷ マイク接続中 — つながると自動で再開' : '● マイク継続中'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 最後に言った数字で判定します</small></div>
+              <div className={`voice-strip ${voiceStatus.includes('切替中') ? 'voice-preparing' : ''}`}>
+                <div><strong>{voiceStatus.includes('切替中') ? '◷ 次の問題へマイク切替中' : '● この問題を聞き取り中'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 問題ごとに音声を分けて判定します</small></div>
                 <button onClick={() => { voiceTicket.current?.cancel(); setVoiceRetry((value) => value + 1); }}>マイク再開</button>
                 <button onClick={toggleVoice}>OFF</button>
               </div>
@@ -762,7 +760,7 @@ export default function Home() {
                     {!lastResult.isCorrect && (
                       <div className="answer-input">
                         <span>入力</span>
-                        <del>{lastResult.givenAnswer}</del>
+                        <del>{lastResult.givenAnswer ?? '未認識'}</del>
                       </div>
                     )}
                   </div>
