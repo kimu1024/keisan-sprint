@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { VoiceCapture, recognitionConstructor, type VoiceTicket } from './voice';
 
 type Theme = 'coral' | 'apricot' | 'lemon' | 'mint' | 'aqua' | 'sky' | 'lavender' | 'rose';
 type Genre = 'add-simple' | 'add-carry' | 'sub-simple' | 'sub-borrow' | 'multiply';
@@ -15,7 +16,7 @@ type Problem = {
   answer: number;
 };
 
-type RecordItem = Problem & { elapsed: number; mistakes: number };
+type RecordItem = Problem & { elapsed: number; mistakes: number; givenAnswer?: number | null; transcript?: string; status?: 'pending' | 'done' | 'unrecognized' };
 type LastResult = {
   sequence: number;
   problem: Problem;
@@ -104,8 +105,8 @@ function shuffle<T>(items: T[]) {
   return result;
 }
 
-function stripRecord({ elapsed: _elapsed, mistakes: _mistakes, ...problem }: RecordItem): Problem {
-  return problem;
+function stripRecord(record: RecordItem): Problem {
+  return makeProblem(record.id, record.left, record.right, record.operator, record.answer);
 }
 
 function formatTime(ms: number) {
@@ -267,7 +268,17 @@ export default function Home() {
   const [reviewKind, setReviewKind] = useState<ReviewKind>('mistakes');
   const [answer, setAnswer] = useState('');
   const [records, setRecords] = useState<RecordItem[]>([]);
-  const [mistakes, setMistakes] = useState(0);
+  const mistakes = records.filter((record) => record.mistakes > 0).length;
+  const pendingCount = records.filter((record) => record.status === 'pending').length;
+  const unrecognizedCount = records.filter((record) => record.status === 'unrecognized').length;
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState('');
+  const [voiceRetry, setVoiceRetry] = useState(0);
+  const voiceCapture = useRef<VoiceCapture | null>(null);
+  const voiceTicket = useRef<VoiceTicket | null>(null);
+  const runId = useRef(0);
+  const submittedQuestion = useRef('');
   const [elapsed, setElapsed] = useState(0);
   const [totalElapsed, setTotalElapsed] = useState(0);
   const [lastResult, setLastResult] = useState<LastResult | null>(null);
@@ -275,6 +286,12 @@ export default function Home() {
   const questionStartedAt = useRef(0);
   const resultSequence = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
+
+  useEffect(() => {
+    setVoiceSupported(Boolean(recognitionConstructor()));
+    voiceCapture.current = new VoiceCapture();
+    return () => { runId.current += 1; voiceCapture.current?.cancelAll(); };
+  }, []);
 
   const problemBank = useMemo(
     () => buildProblemBank(selectedGenres, selectedTables),
@@ -380,12 +397,36 @@ export default function Home() {
   const progressCurrent = phase === 'review' ? reviewIndex + 1 : currentIndex + 1;
   const progressTotal = phase === 'review' ? reviewProblems.length : problems.length;
 
+  useEffect(() => {
+    if (!voiceEnabled || phase !== 'quiz' || !currentProblem) return;
+    let visible = true;
+    const ticket = voiceCapture.current?.begin((status) => { if (visible) setVoiceStatus(status); });
+    voiceTicket.current = ticket ?? null;
+    return () => { visible = false; void ticket?.finish(); };
+  }, [voiceEnabled, phase, currentProblem, voiceRetry]);
+
+  const toggleVoice = async () => {
+    if (voiceEnabled) {
+      voiceTicket.current?.cancel(); voiceTicket.current = null;
+      setVoiceEnabled(false); return;
+    }
+    try {
+      setVoiceStatus('マイクの許可を確認中…');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream.getTracks().forEach((track) => track.stop());
+      setVoiceEnabled(true);
+      setVoiceStatus('音声入力 ON · 答えを言ってから次へ');
+    } catch { setVoiceStatus('マイクを許可できませんでした。テンキーで続けられます。'); }
+  };
+
   const beginQuiz = () => {
     if (!selectedCount) return;
+    runId.current += 1;
+    voiceCapture.current?.cancelAll();
+    submittedQuestion.current = '';
     setProblems(shuffle(problemBank).slice(0, selectedCount));
     setRecords([]);
     setCurrentIndex(0);
-    setMistakes(0);
     setAnswer('');
     setElapsed(0);
     setLastResult(null);
@@ -393,9 +434,12 @@ export default function Home() {
     setPhase('countdown');
   };
 
-  const incorrectRecords = useMemo(() => records.filter((item) => item.mistakes > 0), [records]);
+  const incorrectRecords = useMemo(() => records.filter((item) => item.mistakes > 0 || item.status === 'unrecognized'), [records]);
 
   const startReview = (kind: ReviewKind) => {
+    if (pendingCount) return;
+    submittedQuestion.current = '';
+    setVoiceEnabled(false);
     const slowRecords = [...records]
       .sort((a, b) => b.elapsed - a.elapsed)
       .slice(0, Math.min(10, records.length));
@@ -420,6 +464,8 @@ export default function Home() {
   };
 
   const resetToSetup = () => {
+    runId.current += 1;
+    voiceCapture.current?.cancelAll();
     setPhase('setup');
     setAnswer('');
     setLastResult(null);
@@ -448,8 +494,40 @@ export default function Home() {
   }, [currentIndex, phase, problems.length, reviewIndex, reviewProblems.length]);
 
   const submitAnswer = useCallback(() => {
-    if (!currentProblem || answer === '') return;
+    if (!currentProblem || (phase !== 'quiz' && phase !== 'review')) return;
+    if (answer === '' && !(voiceEnabled && phase === 'quiz')) return;
+    const questionKey = `${runId.current}-${phase}-${currentProblem.id}`;
+    if (submittedQuestion.current === questionKey) return;
+    submittedQuestion.current = questionKey;
     const now = performance.now();
+    if (answer === '' && voiceEnabled && phase === 'quiz') {
+      const problem = currentProblem;
+      const thisRun = runId.current;
+      const ticket = voiceTicket.current;
+      const duration = now - questionStartedAt.current;
+      const sequence = ++resultSequence.current;
+      voiceTicket.current = null;
+      setRecords((current) => [...current, { ...problem, elapsed: duration, mistakes: 0, status: 'pending' }]);
+      const recognition = ticket?.finish() ?? Promise.resolve({ transcript: '', value: null, error: '音声がありません' });
+      moveForward(now);
+      void recognition.then((result) => {
+        if (runId.current !== thisRun) return;
+        if (result.value !== null) {
+          const givenAnswer = result.value;
+          setLastResult((current) => current && current.sequence > sequence ? current : {
+            sequence, problem, givenAnswer, isCorrect: givenAnswer === problem.answer,
+          });
+        }
+        setRecords((current) => current.map((record) => record.id === problem.id ? {
+          ...record, givenAnswer: result.value, transcript: result.transcript || result.error || '音声がありません',
+          status: result.value === null ? 'unrecognized' : 'done',
+          mistakes: result.value !== null && result.value !== problem.answer ? 1 : 0,
+        } : record));
+      });
+      return;
+    }
+    voiceTicket.current?.cancel();
+    voiceTicket.current = null;
     const givenAnswer = Number(answer);
     const isCorrect = givenAnswer === currentProblem.answer;
     playAnswerSound(isCorrect);
@@ -466,13 +544,14 @@ export default function Home() {
         ...currentProblem,
         elapsed: now - questionStartedAt.current,
         mistakes: isCorrect ? 0 : 1,
+        givenAnswer,
+        status: 'done' as const,
       };
       setRecords((current) => [...current, record]);
     }
 
-    if (!isCorrect && phase === 'quiz') setMistakes((value) => value + 1);
     moveForward(now);
-  }, [answer, currentProblem, moveForward, phase, playAnswerSound]);
+  }, [answer, currentProblem, moveForward, phase, playAnswerSound, voiceEnabled]);
 
   const inputDigit = useCallback((digit: string) => {
     setAnswer((value) => (value.length >= 3 ? value : `${value}${digit}`));
@@ -485,6 +564,9 @@ export default function Home() {
   useEffect(() => {
     if (phase !== 'quiz' && phase !== 'review') return;
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.target instanceof HTMLElement && event.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+      if (event.repeat && event.key === 'Enter') return;
+      if (/^[0-9]$/.test(event.key) || ['Backspace', 'Delete', 'Enter'].includes(event.key)) event.preventDefault();
       if (/^[0-9]$/.test(event.key)) inputDigit(event.key);
       if (event.key === 'Backspace' || event.key === 'Delete') eraseDigit();
       if (event.key === 'Enter') submitAnswer();
@@ -523,6 +605,14 @@ export default function Home() {
 
         {phase === 'setup' && (
           <div className="setup-content">
+            <div className="voice-setting">
+              <button className="voice-mode-button" onClick={toggleVoice} disabled={!voiceSupported} aria-pressed={voiceEnabled}>
+                {voiceEnabled ? '● 音声入力 ON' : '○ 音声入力を使う'}
+              </button>
+              <small>{voiceSupported ? '声で答えて「次へ」。テンキーも使えます。' : 'このブラウザでは音声入力に対応していません。'}</small>
+              <small>音声はブラウザの認識サービスへ送信される場合があります。</small>
+              {voiceStatus && <small role="status">{voiceStatus}</small>}
+            </div>
             <div className="intro">
               <span className="step-badge">01</span>
               <div>
@@ -624,6 +714,13 @@ export default function Home() {
 
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
+            {voiceEnabled && phase === 'quiz' && (
+              <div className="voice-strip">
+                <div><strong>VOICE</strong><span role="status">{voiceStatus}</span><small>判定待ち {pendingCount}問 · 正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問</small></div>
+                <button onClick={() => { voiceTicket.current?.cancel(); setVoiceRetry((value) => value + 1); }}>マイク再開</button>
+                <button onClick={toggleVoice}>OFF</button>
+              </div>
+            )}
             <div className="quiz-status">
               <div className="progress-block">
                 <div className="progress-label">
@@ -703,7 +800,7 @@ export default function Home() {
                 <i>＝</i>
                 <strong className={answer ? '' : 'empty'}>{answer || '?'}</strong>
               </div>
-              <p className="feedback-message">こたえを おしてね</p>
+              <p className="feedback-message">{voiceEnabled && phase === 'quiz' ? '言い終わったら「次へ」· 数字を押すとテンキー優先' : 'こたえを おしてね'}</p>
             </div>
 
             <div className="keypad" aria-label="数字入力">
@@ -713,7 +810,7 @@ export default function Home() {
               <button className="key-zero" onClick={() => inputDigit('0')}>0</button>
               <button className="key-action" onClick={eraseDigit} aria-label="一文字消す">⌫</button>
               <button className="key-submit" onClick={submitAnswer} aria-label="答えを決定">
-                <span>こたえる</span><b aria-hidden="true">↵</b>
+                <span>{voiceEnabled && phase === 'quiz' && answer === '' ? '次へ' : 'こたえる'}</span><b aria-hidden="true">↵</b>
               </button>
             </div>
           </div>
@@ -725,7 +822,7 @@ export default function Home() {
             <p className="result-kicker">SPRINT COMPLETE</p>
             <h2>ぜんもん おわったよ！</h2>
             <p className="result-copy">
-              {mistakes > 0
+              {pendingCount > 0 ? `あと${pendingCount}問を判定中です。タイムは計測済みです。` : unrecognizedCount > 0 ? `まちがい${mistakes}問・聞き取り未確認${unrecognizedCount}問。下の一覧で確認しよう。` : mistakes > 0
                 ? `まちがえた${mistakes}問を復習して、しっかり覚えよう。`
                 : 'ぜんもん正解！ 時間のかかった問題をもう一度やって、もっと速くなろう。'}
             </p>
@@ -734,6 +831,21 @@ export default function Home() {
               <div><span>1問へいきん</span><strong>{(averageTime / 1000).toFixed(2)}<small>秒</small></strong></div>
               <div><span>まちがい</span><strong>{mistakes}<small>問</small></strong></div>
             </div>
+            {records.some((record) => record.transcript !== undefined || record.status === 'pending') && (
+              <section className="answer-audit">
+                <h3>回答一覧 <small>認識した言葉もチェック</small></h3>
+                <div className="audit-scroll"><table>
+                  <thead><tr><th>問</th><th>問題・正答</th><th>回答／音声認識</th><th>結果</th></tr></thead>
+                  <tbody>{records.map((record, index) => (
+                    <tr key={record.id} className={record.mistakes || record.status === 'unrecognized' ? 'audit-wrong' : ''}>
+                      <td>{index + 1}</td><td>{record.left} {record.operator} {record.right} = <strong>{record.answer}</strong></td>
+                      <td>{record.status === 'pending' ? '認識中…' : <><strong>{record.givenAnswer ?? '—'}</strong>{record.transcript !== undefined && <small>認識：「{record.transcript}」</small>}</>}</td>
+                      <td>{record.status === 'pending' ? '判定待ち' : record.status === 'unrecognized' ? '未確認' : record.mistakes ? '不正解' : '正解'}</td>
+                    </tr>
+                  ))}</tbody>
+                </table></div>
+              </section>
+            )}
             <section className="analysis-section">
               <div className="analysis-heading">
                 <div>
@@ -769,7 +881,7 @@ export default function Home() {
                       <span className={`rank-number rank-${index + 1}`}>{index + 1}</span>
                       <strong className="rank-problem">{record.left} {record.operator} {record.right}</strong>
                       <span className={`rank-result ${record.mistakes ? 'needs-review' : ''}`}>
-                        {record.mistakes ? '要復習' : '正解'}
+                        {record.status === 'pending' ? '判定待ち' : record.status === 'unrecognized' ? '未確認' : record.mistakes ? '要復習' : '正解'}
                       </span>
                       <strong className="rank-time">{formatSeconds(record.elapsed)}</strong>
                     </div>
@@ -777,10 +889,10 @@ export default function Home() {
                 </div>
               </div>
             </section>
-            <div className="result-actions">
+            <fieldset className="result-actions" disabled={pendingCount > 0}>
               {incorrectRecords.length > 0 && (
                 <button className="primary-button result-button" onClick={() => startReview('mistakes')}>
-                  <span>まちがえた{incorrectRecords.length}問を復習</span><b>→</b>
+                  <span>{unrecognizedCount ? 'まちがい・未確認' : 'まちがえた'}{incorrectRecords.length}問を復習</span><b>→</b>
                 </button>
               )}
               <button className={incorrectRecords.length ? 'secondary-button' : 'primary-button result-button'} onClick={() => startReview('slow')}>
@@ -791,7 +903,7 @@ export default function Home() {
                   <span>まとめて復習</span><b>↗</b>
                 </button>
               )}
-            </div>
+            </fieldset>
             <button className="text-button" onClick={resetToSetup}>れんしゅう選択にもどる</button>
           </div>
         )}

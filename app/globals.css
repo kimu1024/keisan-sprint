@@ -1,6 +1,26 @@
 @import 'tailwindcss';
 
 :root { color-scheme: light; }
+fieldset.result-actions { padding: 0; border: 0; min-width: 0; }
+.voice-setting { display: flex; flex-wrap: wrap; align-items: center; gap: 7px 12px; padding-top: 12px; }
+.voice-setting small { color: var(--muted); font-size: 10px; }
+.voice-mode-button, .voice-strip button { border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; background: var(--soft); color: var(--ink); font-size: 11px; font-weight: 800; cursor: pointer; }
+.voice-mode-button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+.voice-strip { display: flex; align-items: center; gap: 6px; margin-bottom: 9px; padding: 9px; border: 1px solid var(--line); border-radius: 14px; background: var(--soft); }
+.voice-strip > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.voice-strip strong { color: var(--accent); font-size: 9px; letter-spacing: .15em; }
+.voice-strip span, .voice-strip small { overflow-wrap: anywhere; color: var(--muted); font-size: 10px; }
+.voice-strip button { padding: 8px; white-space: nowrap; }
+.answer-audit { margin-top: 24px; text-align: left; }
+.answer-audit h3 { font-size: 17px; }
+.answer-audit h3 small { color: var(--muted); font-size: 10px; }
+.audit-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 16px; }
+.answer-audit table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.answer-audit th, .answer-audit td { padding: 10px 8px; border-bottom: 1px solid var(--line); }
+.answer-audit th { background: var(--soft); white-space: nowrap; }
+.answer-audit td small { display: block; overflow-wrap: anywhere; margin-top: 4px; color: var(--muted); }
+.audit-wrong { background: #fff1f3; }
+.audit-wrong td:last-child { color: #c52a50; font-weight: 800; }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 button { font: inherit; touch-action: manipulation; }
 body { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic", system-ui, sans-serif; }
@@ -329,7 +349,7 @@ button:disabled { cursor: default; opacity: .42; }
 @media (max-width: 760px) and (max-height: 760px) {
   .app-shell { padding: 0; }
   .app-card { padding: 10px 13px; border-radius: 0; }
-  .phase-quiz, .phase-countdown { height: 100svh; overflow: hidden; }
+  .phase-quiz, .phase-countdown { min-height: 100svh; height: auto; overflow: visible; }
   .topbar, .topbar.compact { padding-bottom: 8px; }
   .brand-mark { width: 36px; height: 36px; }
   .intro { padding: 8px 1px 7px; }
