@@ -715,8 +715,8 @@ export default function Home() {
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
             {voiceEnabled && phase === 'quiz' && (
-              <div className={`voice-strip ${voiceStatus.startsWith('マイク準備中') ? 'voice-preparing' : ''}`}>
-                <div><strong>{voiceStatus.startsWith('マイク準備中') ? '◷ マイク準備中 — まだ話さずに待ってね' : 'VOICE'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 最後に言った数字で判定します</small></div>
+              <div className={`voice-strip ${voiceStatus.includes('接続中') ? 'voice-preparing' : ''}`}>
+                <div><strong>{voiceStatus.includes('接続中') ? '◷ マイク接続中 — つながると自動で再開' : '● マイク継続中'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 最後に言った数字で判定します</small></div>
                 <button onClick={() => { voiceTicket.current?.cancel(); setVoiceRetry((value) => value + 1); }}>マイク再開</button>
                 <button onClick={toggleVoice}>OFF</button>
               </div>
