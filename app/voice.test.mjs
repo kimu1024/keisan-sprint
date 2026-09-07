@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { VoiceCapture, parseSpokenNumber } from './voice.ts';
 
-test('spoken numbers accept complete Japanese numbers without guessing', () => {
-  for (const [text, number] of [['３６', 36], ['三十六', 36], ['さんじゅうろく', 36], ['キュウ', 9], ['18です。', 18], ['零', 0]]) {
+test('last spoken number wins, including corrections and empty recognition segments', () => {
+  for (const [text, number] of [['３６', 36], ['三十六', 36], ['さんじゅうろく', 36], ['キュウ', 9], ['18です。', 18], ['零', 0], ['/ 16', 16], ['12 / 16', 16], ['16 / 12', 12], [' / / １６ / ', 16], ['3か4', 4], ['答えは3かな', 3], ['2 3です', 3], ['十五 / じゅうろく', 16]]) {
     assert.equal(parseSpokenNumber(text), number);
   }
-  for (const text of ['', '3か4', '答えは3かな', '2 3です', 'マイナス1']) {
+  for (const text of ['', ' / ', 'マイナス1', '1.5', '1000', '百']) {
     assert.equal(parseSpokenNumber(text), null);
   }
 });
@@ -29,9 +29,11 @@ test('late results remain attached to sealed question and microphone is serializ
   const second = capture.begin(() => {});
   await Promise.resolve();
   assert.equal(instances.length, 1);
-  instances[0].result('三十六');
+  instances[0].onresult({ results: ['', '12', '三十六'].map((transcript) => ({ isFinal: true, 0: { transcript } })) });
   instances[0].end();
-  assert.equal((await firstResult).value, 36);
+  const recognized = await firstResult;
+  assert.equal(recognized.value, 36);
+  assert.equal(recognized.transcript, ' / 12 / 三十六');
   await Promise.resolve();
   assert.equal(instances.length, 2);
   const secondResult = second.finish();

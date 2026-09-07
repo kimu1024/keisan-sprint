@@ -11,6 +11,14 @@ fieldset.result-actions { padding: 0; border: 0; min-width: 0; }
 .voice-strip strong { color: var(--accent); font-size: 9px; letter-spacing: .15em; }
 .voice-strip span, .voice-strip small { overflow-wrap: anywhere; color: var(--muted); font-size: 10px; }
 .voice-strip button { padding: 8px; white-space: nowrap; }
+.voice-strip.voice-preparing { border-color: #d9a842; background: #fff7de; }
+.voice-strip.voice-preparing strong { color: #805b0b; font-size: 11px; letter-spacing: 0; }
+.recognition-pending { display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin: 0 0 12px; border: 1px solid #e7bd59; border-radius: 15px; color: #72500b; background: #fff5d7; text-align: left; }
+.recognition-pending strong { display: block; font-size: 13px; }
+.recognition-pending b { display: inline-block; margin-left: 5px; padding: 3px 8px; border-radius: 99px; background: #f4d477; font-size: 14px; }
+.recognition-pending small { display: block; margin-top: 4px; font-size: 10px; line-height: 1.5; }
+.recognition-spinner { flex: 0 0 23px; height: 23px; border: 3px solid #eddbab; border-top-color: #9b6a04; border-radius: 50%; animation: recognitionSpin 1s linear infinite; }
+@keyframes recognitionSpin { to { transform: rotate(360deg); } }
 .answer-audit { margin-top: 24px; text-align: left; }
 .answer-audit h3 { font-size: 17px; }
 .answer-audit h3 small { color: var(--muted); font-size: 10px; }

@@ -715,12 +715,13 @@ export default function Home() {
         {(phase === 'quiz' || phase === 'review') && currentProblem && (
           <div className="quiz-content">
             {voiceEnabled && phase === 'quiz' && (
-              <div className="voice-strip">
-                <div><strong>VOICE</strong><span role="status">{voiceStatus}</span><small>判定待ち {pendingCount}問 · 正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問</small></div>
+              <div className={`voice-strip ${voiceStatus.startsWith('マイク準備中') ? 'voice-preparing' : ''}`}>
+                <div><strong>{voiceStatus.startsWith('マイク準備中') ? '◷ マイク準備中 — まだ話さずに待ってね' : 'VOICE'}</strong><span role="status">{voiceStatus}</span><small>正解 {records.filter((r) => r.status === 'done' && !r.mistakes).length}問 · 最後に言った数字で判定します</small></div>
                 <button onClick={() => { voiceTicket.current?.cancel(); setVoiceRetry((value) => value + 1); }}>マイク再開</button>
                 <button onClick={toggleVoice}>OFF</button>
               </div>
             )}
+            {pendingCount > 0 && <RecognitionPending count={pendingCount} />}
             <div className="quiz-status">
               <div className="progress-block">
                 <div className="progress-label">
@@ -818,6 +819,7 @@ export default function Home() {
 
         {phase === 'result' && (
           <div className="result-content">
+            {pendingCount > 0 && <RecognitionPending count={pendingCount} finished />}
             <span className="result-symbol">★</span>
             <p className="result-kicker">SPRINT COMPLETE</p>
             <h2>ぜんもん おわったよ！</h2>
@@ -922,6 +924,17 @@ export default function Home() {
         )}
       </section>
     </main>
+  );
+}
+
+function RecognitionPending({ count, finished = false }: { count: number; finished?: boolean }) {
+  return (
+    <div className="recognition-pending" role="status" aria-live="polite">
+      <i className="recognition-spinner" aria-hidden="true" />
+      <div><strong>音声の認識待ち <b>{count}問</b></strong>
+        <small>{finished ? '回答を確認中です。完了すると結果と復習ボタンが更新されます。' : '前の回答を確認中です。次の問題・テンキーはそのまま使えます。'}</small>
+      </div>
+    </div>
   );
 }
 

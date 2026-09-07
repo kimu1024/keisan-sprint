@@ -13,14 +13,17 @@ export function recognitionConstructor(): Constructor | undefined {
   return scope.SpeechRecognition ?? scope.webkitSpeechRecognition;
 }
 
-// Parse only a complete number: never extract a correct-looking digit from a sentence.
+// Select the last spoken number, independently of the expected answer.
+// Keep the original transcript on the result so corrections remain inspectable.
 export function parseSpokenNumber(raw: string): number | null {
-  if (/\d\s+\d/.test(raw.normalize('NFKC'))) return null;
-  let text = raw.normalize('NFKC').trim().replace(/[。、,.!?！？\s]/g, '').replace(/です$/, '');
-  if (/^\d{1,3}$/.test(text)) return Number(text);
+  let text = raw.normalize('NFKC').trim();
   const kana: Record<string, string> = { れい: '零', ゼロ: '零', ぜろ: '零', いち: '一', に: '二', さん: '三', よん: '四', し: '四', ご: '五', ろく: '六', なな: '七', しち: '七', はち: '八', きゅう: '九', く: '九', じゅう: '十' };
   text = text.replace(/[ァ-ヶ]/g, (char) => String.fromCharCode(char.charCodeAt(0) - 0x60));
+  text = text.replace(/まいなす/g, '-');
   text = text.replace(/じゅう|きゅう|いち|さん|よん|ろく|なな|しち|はち|ぜろ|れい|に|し|ご|く/g, (part) => kana[part]);
+  const tokens = text.match(/-?\d+(?:\.\d+)?|-?[零一二三四五六七八九十百千万億]+/g);
+  text = tokens?.at(-1) ?? '';
+  if (/^\d{1,3}$/.test(text)) return Number(text);
   const digits = '零一二三四五六七八九';
   if (/^[零一二三四五六七八九]$/.test(text)) return digits.indexOf(text);
   if (/^[一二三四五六七八九]?十[一二三四五六七八九]?$/.test(text)) {
@@ -92,7 +95,7 @@ export class VoiceCapture {
         recognition.onresult = (event) => {
           if (settled || ended) return;
           transcript = Array.from(event.results).map((item) => item[0].transcript).join(' / ');
-          if (!sealed) update(`認識中：${transcript}`);
+          if (!sealed) update(`聞き取り中 · 最後の数字：${parseSpokenNumber(transcript) ?? '…'}（まだ確定前）`);
         };
         recognition.onerror = (event) => {
           if (ended) return;
